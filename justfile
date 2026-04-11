@@ -18,9 +18,6 @@ build: clean && pot
     cp src/$file $path; \
   done;
 
-  # Compile schemas
-  glib-compile-schemas {{buildDir}}/schemas
-
 # Build and install the extension from source
 install: build
   rm -rf ~/.local/share/gnome-shell/extensions/{{uuid}}
@@ -36,9 +33,12 @@ clean:
   
 # Update and compile the translation files
 pot:
-  xgettext --from-code=UTF-8 \
-           --output=po/{{uuid}}.pot \
-           src/**/*.ui
+  mapfile -t ui_files < <(find src -type f -name '*.ui' 2>/dev/null || true); \
+  if (( ${#ui_files[@]} > 0 )); then \
+    xgettext --from-code=UTF-8 \
+             --output=po/{{uuid}}.pot \
+             "${ui_files[@]}"; \
+  fi
 
   xgettext --from-code=UTF-8 \
            --output=po/{{uuid}}.pot \

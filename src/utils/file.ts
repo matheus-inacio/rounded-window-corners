@@ -30,7 +30,7 @@ export function readFileAsync(path: string): Promise<string> {
     return new Promise((resolve, reject) => {
         file.load_contents_async(null, (_fileSource, res) => {
             try {
-                // In generic gjs, load_contents_finish might return multiple values depending on version, 
+                // In generic gjs, load_contents_finish might return multiple values depending on version,
                 // but usually returns [success, contents, etag_out]
                 const [, contents] = file.load_contents_finish(res);
                 const decoder = new TextDecoder('utf-8');

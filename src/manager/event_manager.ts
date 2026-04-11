@@ -6,16 +6,19 @@
 import type GObject from 'gi://GObject';
 import type Meta from 'gi://Meta';
 import type Shell from 'gi://Shell';
-import GLib from 'gi://GLib';
-import type { RoundedWindowActor } from '../utils/types.js';
+import type {RoundedWindowActor} from '../utils/types.js';
 
-import { logDebug } from '../utils/log.js';
-import { prefs } from '../utils/settings.js';
+import GLib from 'gi://GLib';
+
+import {logDebug} from '../utils/log.js';
 import * as handlers from './event_handlers.js';
 
 const pendingEffectApplications = new Map<Meta.WindowActor, number>();
-const globalConnections: { object: GObject.Object; id: number }[] = [];
-const actorConnections = new Map<RoundedWindowActor | Meta.WindowActor, { object: GObject.Object; id: number }[]>();
+const globalConnections: {object: GObject.Object; id: number}[] = [];
+const actorConnections = new Map<
+    RoundedWindowActor | Meta.WindowActor,
+    {object: GObject.Object; id: number}[]
+>();
 
 /**
  * The rounded corners effect has to perform some actions when different events
@@ -26,9 +29,6 @@ const actorConnections = new Map<RoundedWindowActor | Meta.WindowActor, { object
  * to matching handlers on each effect.
  */
 export function enableEffect() {
-    // Update the effect when settings are changed.
-    connectGlobal(prefs, 'changed', handlers.onSettingsChanged);
-
     const wm = global.windowManager;
 
     // Add the effect to all windows when the extension is enabled.
@@ -131,7 +131,7 @@ function disconnectGlobal() {
 }
 
 /**
- * Connect a callback to an object signal and track it 
+ * Connect a callback to an object signal and track it
  * for a specific actor.
  */
 function connectActor(
@@ -177,7 +177,7 @@ function applyEffectTo(actor: RoundedWindowActor) {
     const metaWindow = actor.metaWindow;
 
     // Fail early if components are missing to avoid connecting to undefined
-    if (!texture || !metaWindow) {
+    if (!(texture && metaWindow)) {
         return;
     }
 
@@ -187,18 +187,28 @@ function applyEffectTo(actor: RoundedWindowActor) {
     // that? I have no idea. But without that, weird bugs can happen. For
     // example, when using Dash to Dock, all opened windows will be invisible
     // *unless they are pinned in the dock*. So yeah, GNOME is magic.
-    connectActor(actor, actor, 'notify::size', () => handlers.onSizeChanged(actor));
-    connectActor(actor, texture, 'size-changed', () => handlers.onSizeChanged(actor));
+    connectActor(actor, actor, 'notify::size', () =>
+        handlers.onSizeChanged(actor),
+    );
+    connectActor(actor, texture, 'size-changed', () =>
+        handlers.onSizeChanged(actor),
+    );
 
     // Get notified about fullscreen explicitly, since a window must not change in
     // size to go fullscreen
-    connectActor(actor, metaWindow, 'notify::fullscreen', () => handlers.onSizeChanged(actor));
+    connectActor(actor, metaWindow, 'notify::fullscreen', () =>
+        handlers.onSizeChanged(actor),
+    );
 
     // Window focus changed.
-    connectActor(actor, metaWindow, 'notify::appears-focused', () => handlers.onFocusChanged(actor));
+    connectActor(actor, metaWindow, 'notify::appears-focused', () =>
+        handlers.onFocusChanged(actor),
+    );
 
     // Workspace or monitor of the window changed.
-    connectActor(actor, metaWindow, 'workspace-changed', () => handlers.onFocusChanged(actor));
+    connectActor(actor, metaWindow, 'workspace-changed', () =>
+        handlers.onFocusChanged(actor),
+    );
 
     handlers.onAddEffect(actor);
 }

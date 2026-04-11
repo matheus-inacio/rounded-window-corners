@@ -1,22 +1,28 @@
 /** @file Provides various utility functions used withing signal handling code. */
 
 import type Clutter from 'gi://Clutter';
-import type { RoundedCornersEffect } from '../effect/rounded_corners_effect.js';
-import type { Bounds, RoundedCornerSettings } from '../utils/types.js';
+import type {RoundedCornersEffect} from '../effect/rounded_corners_effect.js';
+import type {Bounds, RoundedCornerSettings} from '../utils/types.js';
 
 import Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
 import St from 'gi://St';
 
-import { boxShadowCss } from '../utils/box_shadow.js';
+import {boxShadowCss} from '../utils/box_shadow.js';
 import {
-    APP_SHADOWS,
-    ROUNDED_CORNERS_EFFECT,
-    SHADOW_PADDING,
-} from '../utils/constants.js';
-import { readFileAsync } from '../utils/file.js';
-import { logDebug } from '../utils/log.js';
-import { getPref } from '../utils/settings.js';
+    BLACKLIST,
+    CUSTOM_ROUNDED_CORNER_SETTINGS,
+    FOCUSED_SHADOW,
+    GLOBAL_ROUNDED_CORNER_SETTINGS,
+    KEEP_SHADOW_FOR_MAXIMIZED_FULLSCREEN,
+    SKIP_LIBADWAITA_APP,
+    SKIP_LIBHANDY_APP,
+    TWEAK_KITTY_TERMINAL,
+    WHITELIST_MODE,
+} from '../utils/config.js';
+import {APP_SHADOWS, ROUNDED_CORNERS_EFFECT, SHADOW_PADDING,} from '../utils/constants.js';
+import {readFileAsync} from '../utils/file.js';
+import {logDebug} from '../utils/log.js';
 
 // Cache mutter settings to avoid creating a new Gio.Settings object on every
 // call to windowScaleFactor (which is called per-frame during overview animations).
@@ -82,8 +88,8 @@ export function unwrapActor(actor: Meta.WindowActor): Clutter.Actor | null {
  * @returns The matching settings object.
  */
 export function getRoundedCornersCfg(win: Meta.Window): RoundedCornerSettings {
-    const globalCfg = getPref('global-rounded-corner-settings');
-    const customCfgList = getPref('custom-rounded-corner-settings');
+    const globalCfg = GLOBAL_ROUNDED_CORNER_SETTINGS;
+    const customCfgList = CUSTOM_ROUNDED_CORNER_SETTINGS;
 
     const wmClass = win.get_wm_class_instance();
     if (
@@ -153,7 +159,7 @@ export function computeBounds(
     // Kitty draws its window decoration by itself, so we need to manually
     // clip its shadow and recompute the outer bounds for it.
     if (
-        getPref('tweak-kitty-terminal') &&
+        TWEAK_KITTY_TERMINAL &&
         actor.metaWindow.get_client_type() === Meta.WindowClientType.WAYLAND &&
         actor.metaWindow.get_wm_class_instance() === 'kitty'
     ) {
@@ -224,16 +230,16 @@ export function computeShadowActorOffset(
 export function updateShadowActorStyle(
     win: Meta.Window,
     actor: St.Bin,
-    borderRadius = getPref('global-rounded-corner-settings').borderRadius,
-    shadow = getPref('focused-shadow'),
-    padding = getPref('global-rounded-corner-settings').padding,
+    borderRadius = GLOBAL_ROUNDED_CORNER_SETTINGS.borderRadius,
+    shadow = FOCUSED_SHADOW,
+    padding = GLOBAL_ROUNDED_CORNER_SETTINGS.padding,
 ) {
-    const { left, right, top, bottom } = padding;
+    const {left, right, top, bottom} = padding;
 
     // Increase border_radius when smoothing is on.
-    // Read global settings once to avoid repeated GSettings deserializations.
+    // Read global config once (constant object; avoids redundant lookups).
     let adjustedBorderRadius = borderRadius;
-    const globalCfg = getPref('global-rounded-corner-settings');
+    const globalCfg = GLOBAL_ROUNDED_CORNER_SETTINGS;
     if (globalCfg !== null) {
         adjustedBorderRadius *= 1.0 + globalCfg.smoothing;
     }
@@ -253,7 +259,7 @@ export function updateShadowActorStyle(
     const child = actor.firstChild as St.Bin;
 
     const hideShadowForMaximizedFullscreen =
-        !getPref('keep-shadow-for-maximized-fullscreen') &&
+        !KEEP_SHADOW_FOR_MAXIMIZED_FULLSCREEN &&
         (win.maximizedHorizontally ||
             win.maximizedVertically ||
             win.fullscreen);
@@ -282,7 +288,7 @@ export function updateShadowActorStyle(
  * @returns Whether the window should have rounded corners.
  */
 export function shouldEnableEffect(
-    win: Meta.Window & { _appType?: AppType, _appTypePromise?: Promise<void> },
+    win: Meta.Window & {_appType?: AppType; _appTypePromise?: Promise<void>},
 ): boolean {
     // Skip rounded corners for the DING (Desktop Icons NG) extension.
     //
@@ -298,9 +304,8 @@ export function shouldEnableEffect(
         return false;
     }
     // handles blacklist / whitelist
-    const isException = getPref('blacklist').includes(wmClass);
-    const enableExceptions = getPref('whitelist');
-    if (isException !== enableExceptions) {
+    const isException = BLACKLIST.includes(wmClass);
+    if (isException !== WHITELIST_MODE) {
         return false;
     }
 
@@ -313,7 +318,7 @@ export function shouldEnableEffect(
         return false;
     }
 
-    // Skip libhandy/libadwaita applications according to settings.
+    // Skip libhandy/libadwaita applications according to config.
     if (win._appType === undefined) {
         if (!win._appTypePromise) {
             win._appTypePromise = getAppTypeAsync(win).then(appType => {
@@ -324,7 +329,10 @@ export function shouldEnableEffect(
                 // Because shouldEnableEffect is mostly called during refreshRoundedCorners,
                 // we should trigger a simple refresh when the promising completes if it changed.
                 const actor = win.get_compositor_private();
-                if (actor && !(actor as any).is_destroyed?.()) {
+                // Clutter.Actor uses GObject-style is_destroyed (not camelCase).
+                // biome-ignore lint/style/useNamingConvention: GObject/C API name
+                type DestroyCheck = {is_destroyed?: () => boolean};
+                if (actor && !(actor as DestroyCheck).is_destroyed?.()) {
                     // Quick import or dispatch here is tricky if it circular-depends on handlers.
                     // Actually, if we just rely on the next resize/focus event, it's fine,
                     // but we can also fire a 'notify::size' to force a refresh on the actor.
@@ -332,7 +340,7 @@ export function shouldEnableEffect(
                 }
             });
         }
-        // Temporarily return true (or false) while it resolves. 
+        // Temporarily return true (or false) while it resolves.
         // Returning true here ensures we don't accidentally disable effect if we are not sure,
         // reducing visual pop-in of rounded corners on correct apps.
         // It will be disabled quickly if it's LibAdwaita.
@@ -342,33 +350,41 @@ export function shouldEnableEffect(
     const appType = win._appType;
     logDebug(`Check Type of window:${win.title} => ${appType}`);
 
-    if (
-        getPref('skip-libadwaita-app') &&
-        appType === 'LibAdwaita' &&
-        !isException
-    ) {
-        return false;
-    }
-    if (
-        getPref('skip-libhandy-app') &&
-        appType === 'LibHandy' &&
-        !isException
-    ) {
+    if (skipRoundedCornersForLibToolkit(appType, isException)) {
         return false;
     }
 
-    // Skip maximized/fullscreen windows according to settings.
+    const cfg = getRoundedCornersCfg(win);
+    return roundedCornersAllowedForWindowState(win, cfg);
+}
+
+type AppType = 'LibAdwaita' | 'LibHandy' | 'Other';
+
+function skipRoundedCornersForLibToolkit(
+    appType: AppType,
+    isException: boolean,
+): boolean {
+    if (isException) {
+        return false;
+    }
+    return (
+        (SKIP_LIBADWAITA_APP && appType === 'LibAdwaita') ||
+        (SKIP_LIBHANDY_APP && appType === 'LibHandy')
+    );
+}
+
+function roundedCornersAllowedForWindowState(
+    win: Meta.Window,
+    cfg: RoundedCornerSettings,
+): boolean {
     const maximized = win.maximizedHorizontally || win.maximizedVertically;
     const fullscreen = win.fullscreen;
-    const cfg = getRoundedCornersCfg(win);
     return (
         !(maximized || fullscreen) ||
         (maximized && !fullscreen && cfg.keepRoundedCorners.maximized) ||
         (fullscreen && cfg.keepRoundedCorners.fullscreen)
     );
 }
-
-type AppType = 'LibAdwaita' | 'LibHandy' | 'Other';
 
 /**
  * Get the type of the application asynchronously (LibHandy/LibAdwaita/Other).

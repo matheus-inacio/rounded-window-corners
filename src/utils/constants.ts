@@ -16,4 +16,3 @@ export const SHADOW_PADDING = 80;
 export const APP_SHADOWS = {
     kitty: [11, 35, 11, 11],
 };
-

@@ -1,13 +1,13 @@
 /** @file Provides wrapper functions for printing out debug messages. */
 
-import {getPref} from './settings.js';
+import {DEBUG_MODE} from './config.js';
 
 /**
  * Log a message with a [Rounded Window Corners] prefix, but only
  * when debug mode is enabled.
  */
 export function logDebug(...args: unknown[]) {
-    if (getPref('debug-mode')) {
+    if (DEBUG_MODE) {
         console.log(`[Rounded Window Corners] ${args}`);
     }
 }

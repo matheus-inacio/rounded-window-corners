@@ -14,12 +14,9 @@ import St from 'gi://St';
 
 import {ClipShadowEffect} from '../effect/clip_shadow_effect.js';
 import {RoundedCornersEffect} from '../effect/rounded_corners_effect.js';
-import {
-    CLIP_SHADOW_EFFECT,
-    ROUNDED_CORNERS_EFFECT,
-} from '../utils/constants.js';
+import {FOCUSED_SHADOW, UNFOCUSED_SHADOW} from '../utils/config.js';
+import {CLIP_SHADOW_EFFECT, ROUNDED_CORNERS_EFFECT,} from '../utils/constants.js';
 import {logDebug} from '../utils/log.js';
-import {getPref} from '../utils/settings.js';
 import {
     computeBounds,
     computeShadowActorOffset,
@@ -80,8 +77,7 @@ export function onAddEffect(actor: RoundedWindowActor) {
 }
 
 export function onRemoveEffect(actor: RoundedWindowActor): void {
-    const name = ROUNDED_CORNERS_EFFECT;
-    unwrapActor(actor)?.remove_effect_by_name(name);
+    unwrapActor(actor)?.remove_effect_by_name(ROUNDED_CORNERS_EFFECT);
 
     // Unbind all properties
     for (const binding of actor.rwcCustomData?.propertyBindings || []) {
@@ -163,8 +159,6 @@ export const onSizeChanged = refreshRoundedCorners;
 
 export const onFocusChanged = refreshShadow;
 
-export const onSettingsChanged = refreshAllRoundedCorners;
-
 /**
  * Create the shadow actor for a window.
  *
@@ -215,8 +209,8 @@ function refreshShadow(actor: RoundedWindowActor) {
     }
 
     const shadowSettings = win.appears_focused
-        ? getPref('focused-shadow')
-        : getPref('unfocused-shadow');
+        ? FOCUSED_SHADOW
+        : UNFOCUSED_SHADOW;
 
     const {borderRadius, padding} = getRoundedCornersCfg(win);
 
@@ -273,11 +267,4 @@ function refreshRoundedCorners(actor: RoundedWindowActor): void {
     });
 
     refreshShadow(actor);
-}
-
-/** Refresh rounded corners settings for all windows. */
-function refreshAllRoundedCorners() {
-    for (const actor of global.get_window_actors()) {
-        refreshRoundedCorners(actor);
-    }
 }

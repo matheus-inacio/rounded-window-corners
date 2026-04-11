@@ -6,8 +6,8 @@ import Cogl from 'gi://Cogl';
 import GObject from 'gi://GObject';
 import Shell from 'gi://Shell';
 
+import {BORDER_WIDTH} from '../utils/config.js';
 import {readShader} from '../utils/file.js';
-import {getPref} from '../utils/settings.js';
 
 const [declarations, code] = readShader(
     import.meta.url,
@@ -67,7 +67,7 @@ export const RoundedCornersEffect = GObject.registerClass(
             config: RoundedCornerSettings,
             windowBounds: Bounds,
         ) {
-            const borderWidth = getPref('border-width') * scaleFactor;
+            const borderWidth = BORDER_WIDTH * scaleFactor;
             const borderColor = config.borderColor;
 
             const outerRadius = config.borderRadius * scaleFactor;
