@@ -1,22 +1,22 @@
 /** @file Provides various utility functions used withing signal handling code. */
 
 import type Clutter from 'gi://Clutter';
-import type {RoundedCornersEffect} from '../effect/rounded_corners_effect.js';
-import type {Bounds, RoundedCornerSettings} from '../utils/types.js';
+import type { RoundedCornersEffect } from '../effect/rounded_corners_effect.js';
+import type { Bounds, RoundedCornerSettings } from '../utils/types.js';
 
 import Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
 import St from 'gi://St';
 
-import {boxShadowCss} from '../utils/box_shadow.js';
+import { boxShadowCss } from '../utils/box_shadow.js';
 import {
     APP_SHADOWS,
     ROUNDED_CORNERS_EFFECT,
     SHADOW_PADDING,
 } from '../utils/constants.js';
-import {readFile} from '../utils/file.js';
-import {logDebug} from '../utils/log.js';
-import {getPref} from '../utils/settings.js';
+import { readFileAsync } from '../utils/file.js';
+import { logDebug } from '../utils/log.js';
+import { getPref } from '../utils/settings.js';
 
 // Cache mutter settings to avoid creating a new Gio.Settings object on every
 // call to windowScaleFactor (which is called per-frame during overview animations).
@@ -228,7 +228,7 @@ export function updateShadowActorStyle(
     shadow = getPref('focused-shadow'),
     padding = getPref('global-rounded-corner-settings').padding,
 ) {
-    const {left, right, top, bottom} = padding;
+    const { left, right, top, bottom } = padding;
 
     // Increase border_radius when smoothing is on.
     // Read global settings once to avoid repeated GSettings deserializations.
@@ -282,7 +282,7 @@ export function updateShadowActorStyle(
  * @returns Whether the window should have rounded corners.
  */
 export function shouldEnableEffect(
-    win: Meta.Window & {_appType?: AppType},
+    win: Meta.Window & { _appType?: AppType, _appTypePromise?: Promise<void> },
 ): boolean {
     // Skip rounded corners for the DING (Desktop Icons NG) extension.
     //
@@ -314,8 +314,32 @@ export function shouldEnableEffect(
     }
 
     // Skip libhandy/libadwaita applications according to settings.
-    const appType = win._appType ?? getAppType(win);
-    win._appType = appType; // Cache the result.
+    if (win._appType === undefined) {
+        if (!win._appTypePromise) {
+            win._appTypePromise = getAppTypeAsync(win).then(appType => {
+                win._appType = appType;
+
+                // Re-evaluate effect now that we know the type.
+                // We must use global.get_window_actors() or actor references carefully.
+                // Because shouldEnableEffect is mostly called during refreshRoundedCorners,
+                // we should trigger a simple refresh when the promising completes if it changed.
+                const actor = win.get_compositor_private();
+                if (actor && !(actor as any).is_destroyed?.()) {
+                    // Quick import or dispatch here is tricky if it circular-depends on handlers.
+                    // Actually, if we just rely on the next resize/focus event, it's fine,
+                    // but we can also fire a 'notify::size' to force a refresh on the actor.
+                    actor.notify('size');
+                }
+            });
+        }
+        // Temporarily return true (or false) while it resolves. 
+        // Returning true here ensures we don't accidentally disable effect if we are not sure,
+        // reducing visual pop-in of rounded corners on correct apps.
+        // It will be disabled quickly if it's LibAdwaita.
+        return true;
+    }
+
+    const appType = win._appType;
     logDebug(`Check Type of window:${win.title} => ${appType}`);
 
     if (
@@ -347,15 +371,15 @@ export function shouldEnableEffect(
 type AppType = 'LibAdwaita' | 'LibHandy' | 'Other';
 
 /**
- * Get the type of the application (LibHandy/LibAdwaita/Other).
+ * Get the type of the application asynchronously (LibHandy/LibAdwaita/Other).
  *
  * @param win - The window to get the type of.
  * @returns the type of the application.
  */
-function getAppType(win: Meta.Window): AppType {
+async function getAppTypeAsync(win: Meta.Window): Promise<AppType> {
     try {
         // May throw a permission error.
-        const contents = readFile(`/proc/${win.get_pid()}/maps`);
+        const contents = await readFileAsync(`/proc/${win.get_pid()}/maps`);
 
         if (contents.includes('libhandy-1.so')) {
             return 'LibHandy';
@@ -367,7 +391,8 @@ function getAppType(win: Meta.Window): AppType {
 
         return 'Other';
     } catch (e) {
-        logError(e);
+        // logError may not be globally defined safely.
+        logDebug(`Failed to determine AppType for ${win.title}: ${e}`);
         return 'Other';
     }
 }

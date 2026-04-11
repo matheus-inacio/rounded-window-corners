@@ -19,6 +19,30 @@ export function readFile(path: string) {
 }
 
 /**
+ * Read file contents as a string asynchronously.
+ *
+ * @param path - The path to the file to be read.
+ * @returns A promise that resolves to the contents of the file as a UTF-8 string.
+ */
+export function readFileAsync(path: string): Promise<string> {
+    const file = Gio.File.new_for_path(path);
+
+    return new Promise((resolve, reject) => {
+        file.load_contents_async(null, (_fileSource, res) => {
+            try {
+                // In generic gjs, load_contents_finish might return multiple values depending on version, 
+                // but usually returns [success, contents, etag_out]
+                const [, contents] = file.load_contents_finish(res);
+                const decoder = new TextDecoder('utf-8');
+                resolve(decoder.decode(contents));
+            } catch (e) {
+                reject(e);
+            }
+        });
+    });
+}
+
+/**
  * Read a file relative to the current module.
  *
  * @param module - `import.meta.url` of the current module.

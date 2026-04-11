@@ -22,7 +22,7 @@ import * as handlers from './event_handlers.js';
  */
 export function enableEffect() {
     // Update the effect when settings are changed.
-    connect(prefs, 'changed', handlers.onSettingsChanged);
+    connectGlobal(prefs, 'changed', handlers.onSettingsChanged);
 
     const wm = global.windowManager;
 
@@ -34,7 +34,7 @@ export function enableEffect() {
     }
 
     // Add the effect to new windows when they are opened.
-    connect(
+    connectGlobal(
         global.display,
         'window-created',
         (_: Meta.Display, win: Meta.Window) => {
@@ -54,22 +54,22 @@ export function enableEffect() {
     );
 
     // Window minimized.
-    connect(wm, 'minimize', (_: Shell.WM, actor: Meta.WindowActor) =>
+    connectGlobal(wm, 'minimize', (_: Shell.WM, actor: Meta.WindowActor) =>
         handlers.onMinimize(actor),
     );
 
     // Window unminimized.
-    connect(wm, 'unminimize', (_: Shell.WM, actor: Meta.WindowActor) =>
+    connectGlobal(wm, 'unminimize', (_: Shell.WM, actor: Meta.WindowActor) =>
         handlers.onUnminimize(actor),
     );
 
     // When closing the window, remove the effect from it.
-    connect(wm, 'destroy', (_: Shell.WM, actor: Meta.WindowActor) =>
+    connectGlobal(wm, 'destroy', (_: Shell.WM, actor: Meta.WindowActor) =>
         removeEffectFrom(actor),
     );
 
     // When windows are restacked, the order of shadow actors as well.
-    connect(global.display, 'restacked', handlers.onRestacked);
+    connectGlobal(global.display, 'restacked', handlers.onRestacked);
 }
 
 /** Disable the effect for all windows. */
@@ -78,52 +78,57 @@ export function disableEffect() {
         removeEffectFrom(actor);
     }
 
-    disconnectAll();
+    disconnectGlobal();
 }
 
-const connections: {object: GObject.Object; id: number}[] = [];
+const globalConnections: {object: GObject.Object; id: number}[] = [];
+const actorConnections = new Map<RoundedWindowActor | Meta.WindowActor, {object: GObject.Object; id: number}[]>();
 
 /**
- * Connect a callback to an object signal and add it to the list of all
- * connections. This allows to easily disconnect all signals when removing
- * the effect.
- *
- * @param object - The object to connect the callback to.
- * @param signal - The name of the signal.
- * @param callback - The function to connect to the signal.
+ * Connect a callback to a global object signal.
  */
-function connect(
+function connectGlobal(
     object: GObject.Object,
     signal: string,
     // biome-ignore lint/suspicious/noExplicitAny: Signal callbacks can have any return args and return types.
     callback: (...args: any[]) => any,
 ) {
-    connections.push({
+    globalConnections.push({
         object: object,
         id: object.connect(signal, callback),
     });
 }
 
 /**
- * Disconnect all connected signals from all actors or a specific object.
- * Pruning disconnected entries keeps the array from growing unboundedly as
- * windows are opened and closed over the lifetime of the session.
- *
- * @param object - If object is provided, only disconnect signals from it.
+ * Disconnect all global signals.
  */
-function disconnectAll(object?: GObject.Object) {
-    let i = connections.length;
-    while (i--) {
-        const connection = connections[i];
-        if (object === undefined || connection.object === object) {
-            connection.object.disconnect(connection.id);
-            // Over time as windows open and close, connections would grow
-            // indefinitely with stale entries pointing to dead window objects
-            // Release the reference to the GObject so it can be garbage
-            // collected after the window is closed, preventing a memory leak.
-            connections.splice(i, 1);
-        }
+function disconnectGlobal() {
+    for (const conn of globalConnections) {
+        conn.object.disconnect(conn.id);
     }
+    globalConnections.length = 0;
+}
+
+/**
+ * Connect a callback to an object signal and track it 
+ * for a specific actor.
+ */
+function connectActor(
+    actor: RoundedWindowActor | Meta.WindowActor,
+    object: GObject.Object,
+    signal: string,
+    // biome-ignore lint/suspicious/noExplicitAny: Signal callbacks can have any return args and return types.
+    callback: (...args: any[]) => any,
+) {
+    let conns = actorConnections.get(actor);
+    if (!conns) {
+        conns = [];
+        actorConnections.set(actor, conns);
+    }
+    conns.push({
+        object,
+        id: object.connect(signal, callback),
+    });
 }
 
 /**
@@ -159,12 +164,12 @@ function applyEffectTo(actor: RoundedWindowActor) {
     // that? I have no idea. But without that, weird bugs can happen. For
     // example, when using Dash to Dock, all opened windows will be invisible
     // *unless they are pinned in the dock*. So yeah, GNOME is magic.
-    connect(actor, 'notify::size', () => {
+    connectActor(actor, actor, 'notify::size', () => {
         if (actor.metaWindow) {
             handlers.onSizeChanged(actor);
         }
     });
-    connect(texture, 'size-changed', () => {
+    connectActor(actor, texture, 'size-changed', () => {
         if (actor.metaWindow) {
             handlers.onSizeChanged(actor);
         }
@@ -172,21 +177,21 @@ function applyEffectTo(actor: RoundedWindowActor) {
 
     // Get notified about fullscreen explicitly, since a window must not change in
     // size to go fullscreen
-    connect(actor.metaWindow, 'notify::fullscreen', () => {
+    connectActor(actor, actor.metaWindow, 'notify::fullscreen', () => {
         if (actor.metaWindow) {
             handlers.onSizeChanged(actor);
         }
     });
 
     // Window focus changed.
-    connect(actor.metaWindow, 'notify::appears-focused', () => {
+    connectActor(actor, actor.metaWindow, 'notify::appears-focused', () => {
         if (actor.metaWindow) {
             handlers.onFocusChanged(actor);
         }
     });
 
     // Workspace or monitor of the window changed.
-    connect(actor.metaWindow, 'workspace-changed', () => {
+    connectActor(actor, actor.metaWindow, 'workspace-changed', () => {
         if (actor.metaWindow) {
             handlers.onFocusChanged(actor);
         }
@@ -195,18 +200,13 @@ function applyEffectTo(actor: RoundedWindowActor) {
     handlers.onAddEffect(actor);
 }
 
-/**
- * Remove the effect from a window.
- *
- * @param actor - The window actor to remove the effect from.
- */
 function removeEffectFrom(actor: RoundedWindowActor) {
-    disconnectAll(actor);
-    disconnectAll(actor.metaWindow);
-
-    const texture = actor.get_texture();
-    if (texture) {
-        disconnectAll(texture);
+    const conns = actorConnections.get(actor);
+    if (conns) {
+        for (const conn of conns) {
+            conn.object.disconnect(conn.id);
+        }
+        actorConnections.delete(actor);
     }
 
     handlers.onRemoveEffect(actor);
