@@ -37,11 +37,27 @@ class GlobalSignalManager {
 class ActorSignalManager {
     private connections = new Map<RoundedWindowActor | Meta.WindowActor, { object: GObject.Object; id: number }[]>();
 
-    connect(actor: RoundedWindowActor | Meta.WindowActor, object: GObject.Object, signal: string, callback: (...args: any[]) => any) {
+    connect(actor: RoundedWindowActor | Meta.WindowActor, object: GObject.Object, signal: string, callback: (...args: any[]) => any): number {
         const id = object.connect(signal, callback);
         const conns = this.connections.get(actor) || [];
         conns.push({ object, id });
         this.connections.set(actor, conns);
+        return id;
+    }
+
+    disconnect(actor: RoundedWindowActor | Meta.WindowActor, id: number) {
+        const conns = this.connections.get(actor);
+        if (conns) {
+            const index = conns.findIndex(conn => conn.id === id);
+            if (index !== -1) {
+                const conn = conns[index];
+                conn.object.disconnect(conn.id);
+                conns.splice(index, 1);
+            }
+            if (conns.length === 0) {
+                this.connections.delete(actor);
+            }
+        }
     }
 
     disconnectAll(actor: RoundedWindowActor | Meta.WindowActor) {
@@ -149,7 +165,8 @@ function throttledResizeHandler(actor: RoundedWindowActor) {
 
 function applyEffectTo(actor: RoundedWindowActor) {
     if (!actor.firstChild) {
-        actorSignals.connect(actor, actor, 'notify::first-child', () => {
+        const signalId = actorSignals.connect(actor, actor, 'notify::first-child', () => {
+            actorSignals.disconnect(actor, signalId);
             applyEffectTo(actor);
         });
         return;
