@@ -14,11 +14,49 @@ import {logDebug} from '../utils/log.js';
 import * as handlers from './event_handlers.js';
 
 const pendingEffectApplications = new Map<Meta.WindowActor, number>();
-const globalConnections: {object: GObject.Object; id: number}[] = [];
-const actorConnections = new Map<
-    RoundedWindowActor | Meta.WindowActor,
-    {object: GObject.Object; id: number}[]
->();
+const pendingResizeUpdates = new WeakSet<RoundedWindowActor>();
+
+class GlobalSignalManager {
+    private connections: { object: GObject.Object; id: number }[] = [];
+
+    connect(object: GObject.Object, signal: string, callback: (...args: any[]) => any) {
+        this.connections.push({
+            object,
+            id: object.connect(signal, callback),
+        });
+    }
+
+    disconnectAll() {
+        for (const conn of this.connections) {
+            conn.object.disconnect(conn.id);
+        }
+        this.connections.length = 0;
+    }
+}
+
+class ActorSignalManager {
+    private connections = new Map<RoundedWindowActor | Meta.WindowActor, { object: GObject.Object; id: number }[]>();
+
+    connect(actor: RoundedWindowActor | Meta.WindowActor, object: GObject.Object, signal: string, callback: (...args: any[]) => any) {
+        const id = object.connect(signal, callback);
+        const conns = this.connections.get(actor) || [];
+        conns.push({ object, id });
+        this.connections.set(actor, conns);
+    }
+
+    disconnectAll(actor: RoundedWindowActor | Meta.WindowActor) {
+        const conns = this.connections.get(actor);
+        if (conns) {
+            for (const conn of conns) {
+                conn.object.disconnect(conn.id);
+            }
+            this.connections.delete(actor);
+        }
+    }
+}
+
+const globalSignals = new GlobalSignalManager();
+const actorSignals = new ActorSignalManager();
 
 /**
  * The rounded corners effect has to perform some actions when different events
@@ -39,10 +77,10 @@ export function enableEffect() {
     }
 
     // Add the effect to new windows when they are opened.
-    connectGlobal(
+    globalSignals.connect(
         global.display,
         'window-created',
-        (_: Meta.Display, win: Meta.Window) => {
+            (_: Meta.Display, win: Meta.Window) => {
             const actor = win.get_compositor_private() as Meta.WindowActor;
 
             const scheduleApply = () => {
@@ -67,18 +105,10 @@ export function enableEffect() {
         },
     );
 
-    // Window minimized.
-    connectGlobal(wm, 'minimize', (_: Shell.WM, actor: Meta.WindowActor) =>
-        handlers.onMinimize(actor),
-    );
+    globalSignals.connect(wm, 'minimize', (_: Shell.WM, actor: Meta.WindowActor) => handlers.onMinimize(actor as RoundedWindowActor));
+    globalSignals.connect(wm, 'unminimize', (_: Shell.WM, actor: Meta.WindowActor) => handlers.onUnminimize(actor as RoundedWindowActor));
 
-    // Window unminimized.
-    connectGlobal(wm, 'unminimize', (_: Shell.WM, actor: Meta.WindowActor) =>
-        handlers.onUnminimize(actor),
-    );
-
-    // When closing the window, remove the effect from it.
-    connectGlobal(wm, 'destroy', (_: Shell.WM, actor: Meta.WindowActor) => {
+    globalSignals.connect(wm, 'destroy', (_: Shell.WM, actor: Meta.WindowActor) => {
         const idleId = pendingEffectApplications.get(actor);
         if (idleId) {
             GLib.source_remove(idleId);
@@ -87,11 +117,9 @@ export function enableEffect() {
         removeEffectFrom(actor as RoundedWindowActor);
     });
 
-    // When windows are restacked, the order of shadow actors as well.
-    connectGlobal(global.display, 'restacked', handlers.onRestacked);
+    globalSignals.connect(global.display, 'restacked', handlers.onRestacked);
 }
 
-/** Disable the effect for all windows. */
 export function disableEffect() {
     for (const id of pendingEffectApplications.values()) {
         GLib.source_remove(id);
@@ -102,72 +130,26 @@ export function disableEffect() {
         removeEffectFrom(actor as RoundedWindowActor);
     }
 
-    disconnectGlobal();
+    globalSignals.disconnectAll();
 }
 
 /**
- * Connect a callback to a global object signal.
+ * Throttles rapid size updates (e.g., window dragging) to a single idle frame.
  */
-function connectGlobal(
-    object: GObject.Object,
-    signal: string,
-    // biome-ignore lint/suspicious/noExplicitAny: Signal callbacks can have any return args and return types.
-    callback: (...args: any[]) => any,
-) {
-    globalConnections.push({
-        object: object,
-        id: object.connect(signal, callback),
+function throttledResizeHandler(actor: RoundedWindowActor) {
+    if (pendingResizeUpdates.has(actor)) return;
+    
+    pendingResizeUpdates.add(actor);
+    GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+        pendingResizeUpdates.delete(actor);
+        handlers.onSizeChanged(actor);
+        return GLib.SOURCE_REMOVE;
     });
 }
 
-/**
- * Disconnect all global signals.
- */
-function disconnectGlobal() {
-    for (const conn of globalConnections) {
-        conn.object.disconnect(conn.id);
-    }
-    globalConnections.length = 0;
-}
-
-/**
- * Connect a callback to an object signal and track it
- * for a specific actor.
- */
-function connectActor(
-    actor: RoundedWindowActor | Meta.WindowActor,
-    object: GObject.Object,
-    signal: string,
-    // biome-ignore lint/suspicious/noExplicitAny: Signal callbacks can have any return args and return types.
-    callback: (...args: any[]) => any,
-) {
-    let conns = actorConnections.get(actor);
-    if (!conns) {
-        conns = [];
-        actorConnections.set(actor, conns);
-    }
-    conns.push({
-        object,
-        id: object.connect(signal, callback),
-    });
-}
-
-/**
- * Apply the effect to a window.
- *
- * While {@link enableEffect} handles global events such as window creation,
- * this function handles events that happen to a specific window, like changing
- * its size or workspace.
- *
- * @param actor - The window actor to apply the effect to.
- */
 function applyEffectTo(actor: RoundedWindowActor) {
-    // In wayland sessions, the surface actor of XWayland clients is sometimes
-    // not ready when the window is created. In this case, we wait until it is
-    // ready before applying the effect.
     if (!actor.firstChild) {
-        // Tracked via connectActor so it safely disconnects if the window dies early
-        connectActor(actor, actor, 'notify::first-child', () => {
+        actorSignals.connect(actor, actor, 'notify::first-child', () => {
             applyEffectTo(actor);
         });
         return;
@@ -176,51 +158,31 @@ function applyEffectTo(actor: RoundedWindowActor) {
     const texture = actor.get_texture();
     const metaWindow = actor.metaWindow;
 
-    // Fail early if components are missing to avoid connecting to undefined
     if (!(texture && metaWindow)) {
         return;
     }
 
-    // Window resized.
+        // Window resized.
     //
     // The signal has to be connected both to the actor and the texture. Why is
     // that? I have no idea. But without that, weird bugs can happen. For
     // example, when using Dash to Dock, all opened windows will be invisible
     // *unless they are pinned in the dock*. So yeah, GNOME is magic.
-    connectActor(actor, actor, 'notify::size', () =>
-        handlers.onSizeChanged(actor),
-    );
-    connectActor(actor, texture, 'size-changed', () =>
-        handlers.onSizeChanged(actor),
-    );
-
+    actorSignals.connect(actor, actor, 'notify::size', () => throttledResizeHandler(actor));
+    actorSignals.connect(actor, texture, 'size-changed', () => throttledResizeHandler(actor));
     // Get notified about fullscreen explicitly, since a window must not change in
     // size to go fullscreen
-    connectActor(actor, metaWindow, 'notify::fullscreen', () =>
-        handlers.onSizeChanged(actor),
-    );
+    actorSignals.connect(actor, metaWindow, 'notify::fullscreen', () => throttledResizeHandler(actor));
 
-    // Window focus changed.
-    connectActor(actor, metaWindow, 'notify::appears-focused', () =>
-        handlers.onFocusChanged(actor),
-    );
-
+    // Focus / Workspace changes
+    actorSignals.connect(actor, metaWindow, 'notify::appears-focused', () => handlers.onFocusChanged(actor));
     // Workspace or monitor of the window changed.
-    connectActor(actor, metaWindow, 'workspace-changed', () =>
-        handlers.onFocusChanged(actor),
-    );
+    actorSignals.connect(actor, metaWindow, 'workspace-changed', () => handlers.onFocusChanged(actor));
 
     handlers.onAddEffect(actor);
 }
 
 function removeEffectFrom(actor: RoundedWindowActor) {
-    const conns = actorConnections.get(actor);
-    if (conns) {
-        for (const conn of conns) {
-            conn.object.disconnect(conn.id);
-        }
-        actorConnections.delete(actor);
-    }
-
+    actorSignals.disconnectAll(actor);
     handlers.onRemoveEffect(actor);
 }

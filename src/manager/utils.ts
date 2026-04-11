@@ -29,6 +29,10 @@ import {logDebug} from '../utils/log.js';
 let mutterSettings: Gio.Settings | null = null;
 let fractionalScalingEnabled: boolean | null = null;
 
+// Cache to prevent repetitive I/O operations for 
+// the same app classes
+const appTypeCache = new Map<string, AppType>();
+
 /**
  * Check whether fractional scaling is enabled in the GNOME mutter settings.
  * The result is cached and invalidated when the `experimental-features` setting
@@ -46,13 +50,7 @@ function isFractionalScalingEnabled(): boolean {
     if (fractionalScalingEnabled === null) {
         const features = mutterSettings.get_strv('experimental-features');
 
-        // The method doesn't exist on GNOME 50+ because it's Wayland-only
-        const isWaylandCompositor =
-            !Meta.is_wayland_compositor || Meta.is_wayland_compositor();
-
-        fractionalScalingEnabled =
-            isWaylandCompositor &&
-            features.includes('scale-monitor-framebuffer');
+        fractionalScalingEnabled = features.includes('scale-monitor-framebuffer');
     }
     return fractionalScalingEnabled;
 }
@@ -65,6 +63,7 @@ function isFractionalScalingEnabled(): boolean {
 export function clearMutterSettingsCache() {
     mutterSettings = null;
     fractionalScalingEnabled = null;
+    appTypeCache.clear();
 }
 
 /**
@@ -267,8 +266,8 @@ export function updateShadowActorStyle(
     const newChildStyle = hideShadowForMaximizedFullscreen
         ? 'opacity: 0;'
         : `background: white;
-               border-radius: ${adjustedBorderRadius * scale}px;
-               ${boxShadowCss(shadow, scale)};
+           border-radius: ${adjustedBorderRadius * scale}px;
+           ${boxShadowCss(shadow, scale)};
                margin: ${top * scale}px
                        ${right * scale}px
                        ${bottom * scale}px
@@ -358,7 +357,7 @@ export function shouldEnableEffect(
     return roundedCornersAllowedForWindowState(win, cfg);
 }
 
-type AppType = 'LibAdwaita' | 'LibHandy' | 'Other';
+export type AppType = 'LibAdwaita' | 'LibHandy' | 'Other';
 
 function skipRoundedCornersForLibToolkit(
     appType: AppType,
@@ -393,19 +392,31 @@ function roundedCornersAllowedForWindowState(
  * @returns the type of the application.
  */
 async function getAppTypeAsync(win: Meta.Window): Promise<AppType> {
+    const wmClass = win.get_wm_class_instance();
+
+    // Check cache first
+    if (wmClass && appTypeCache.has(wmClass)) {
+        return appTypeCache.get(wmClass)!;
+    }
+
     try {
         // May throw a permission error.
         const contents = await readFileAsync(`/proc/${win.get_pid()}/maps`);
+        let type: AppType = 'Other';
 
         if (contents.includes('libhandy-1.so')) {
-            return 'LibHandy';
+            type = 'LibHandy';
+        }
+        else if (contents.includes('libadwaita-1.so')) {
+            type = 'LibAdwaita';
         }
 
-        if (contents.includes('libadwaita-1.so')) {
-            return 'LibAdwaita';
+        // Populate cache
+        if (wmClass) {
+            appTypeCache.set(wmClass, type);
         }
 
-        return 'Other';
+        return type;
     } catch (e) {
         // logError may not be globally defined safely.
         logDebug(`Failed to determine AppType for ${win.title}: ${e}`);

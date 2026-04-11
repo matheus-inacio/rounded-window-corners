@@ -4,5 +4,5 @@
     "uuid": "rounded-window-corners@fxgn",
     "url": "https://github.com/flexagoon/rounded-window-corners",
     "gettext-domain": "rounded-window-corners@fxgn",
-    "shell-version": ["49", "50"]
+    "shell-version": ["50"]
 }
