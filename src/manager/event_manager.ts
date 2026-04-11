@@ -6,14 +6,19 @@
 import type GObject from 'gi://GObject';
 import type Meta from 'gi://Meta';
 import type Shell from 'gi://Shell';
-import type {RoundedWindowActor} from '../utils/types.js';
+import GLib from 'gi://GLib';
+import type { RoundedWindowActor } from '../utils/types.js';
 
-import {logDebug} from '../utils/log.js';
-import {prefs} from '../utils/settings.js';
+import { logDebug } from '../utils/log.js';
+import { prefs } from '../utils/settings.js';
 import * as handlers from './event_handlers.js';
 
+const pendingEffectApplications = new Map<Meta.WindowActor, number>();
+const globalConnections: { object: GObject.Object; id: number }[] = [];
+const actorConnections = new Map<RoundedWindowActor | Meta.WindowActor, { object: GObject.Object; id: number }[]>();
+
 /**
- * The rounded corners effect has to perform some actions when differen events
+ * The rounded corners effect has to perform some actions when different events
  * happen. For example, when a new window is opened, the effect has to detect
  * it and add rounded corners to it.
  *
@@ -30,7 +35,7 @@ export function enableEffect() {
     const windowActors = global.get_window_actors();
     logDebug(`Initial window count: ${windowActors.length}`);
     for (const actor of windowActors) {
-        applyEffectTo(actor);
+        applyEffectTo(actor as RoundedWindowActor);
     }
 
     // Add the effect to new windows when they are opened.
@@ -38,17 +43,26 @@ export function enableEffect() {
         global.display,
         'window-created',
         (_: Meta.Display, win: Meta.Window) => {
-            const actor: Meta.WindowActor = win.get_compositor_private();
+            const actor = win.get_compositor_private() as Meta.WindowActor;
+
+            const scheduleApply = () => {
+                const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                    pendingEffectApplications.delete(actor);
+                    applyEffectTo(actor as RoundedWindowActor);
+                    return GLib.SOURCE_REMOVE;
+                });
+                pendingEffectApplications.set(actor, idleId);
+            };
 
             // If wm_class_instance of Meta.Window is null, wait for it to be
             // set before applying the effect.
-            if (win?.get_wm_class_instance() == null) {
+            if (win.get_wm_class_instance() == null) {
                 const notifyId = win.connect('notify::wm-class', () => {
-                    applyEffectTo(actor);
                     win.disconnect(notifyId);
+                    scheduleApply();
                 });
             } else {
-                applyEffectTo(actor);
+                scheduleApply();
             }
         },
     );
@@ -64,9 +78,14 @@ export function enableEffect() {
     );
 
     // When closing the window, remove the effect from it.
-    connectGlobal(wm, 'destroy', (_: Shell.WM, actor: Meta.WindowActor) =>
-        removeEffectFrom(actor),
-    );
+    connectGlobal(wm, 'destroy', (_: Shell.WM, actor: Meta.WindowActor) => {
+        const idleId = pendingEffectApplications.get(actor);
+        if (idleId) {
+            GLib.source_remove(idleId);
+            pendingEffectApplications.delete(actor);
+        }
+        removeEffectFrom(actor as RoundedWindowActor);
+    });
 
     // When windows are restacked, the order of shadow actors as well.
     connectGlobal(global.display, 'restacked', handlers.onRestacked);
@@ -74,15 +93,17 @@ export function enableEffect() {
 
 /** Disable the effect for all windows. */
 export function disableEffect() {
+    for (const id of pendingEffectApplications.values()) {
+        GLib.source_remove(id);
+    }
+    pendingEffectApplications.clear();
+
     for (const actor of global.get_window_actors()) {
-        removeEffectFrom(actor);
+        removeEffectFrom(actor as RoundedWindowActor);
     }
 
     disconnectGlobal();
 }
-
-const globalConnections: {object: GObject.Object; id: number}[] = [];
-const actorConnections = new Map<RoundedWindowActor | Meta.WindowActor, {object: GObject.Object; id: number}[]>();
 
 /**
  * Connect a callback to a global object signal.
@@ -145,16 +166,18 @@ function applyEffectTo(actor: RoundedWindowActor) {
     // not ready when the window is created. In this case, we wait until it is
     // ready before applying the effect.
     if (!actor.firstChild) {
-        const id = actor.connect('notify::first-child', () => {
+        // Tracked via connectActor so it safely disconnects if the window dies early
+        connectActor(actor, actor, 'notify::first-child', () => {
             applyEffectTo(actor);
-            actor.disconnect(id);
         });
-
         return;
     }
 
     const texture = actor.get_texture();
-    if (!texture) {
+    const metaWindow = actor.metaWindow;
+
+    // Fail early if components are missing to avoid connecting to undefined
+    if (!texture || !metaWindow) {
         return;
     }
 
@@ -164,38 +187,18 @@ function applyEffectTo(actor: RoundedWindowActor) {
     // that? I have no idea. But without that, weird bugs can happen. For
     // example, when using Dash to Dock, all opened windows will be invisible
     // *unless they are pinned in the dock*. So yeah, GNOME is magic.
-    connectActor(actor, actor, 'notify::size', () => {
-        if (actor.metaWindow) {
-            handlers.onSizeChanged(actor);
-        }
-    });
-    connectActor(actor, texture, 'size-changed', () => {
-        if (actor.metaWindow) {
-            handlers.onSizeChanged(actor);
-        }
-    });
+    connectActor(actor, actor, 'notify::size', () => handlers.onSizeChanged(actor));
+    connectActor(actor, texture, 'size-changed', () => handlers.onSizeChanged(actor));
 
     // Get notified about fullscreen explicitly, since a window must not change in
     // size to go fullscreen
-    connectActor(actor, actor.metaWindow, 'notify::fullscreen', () => {
-        if (actor.metaWindow) {
-            handlers.onSizeChanged(actor);
-        }
-    });
+    connectActor(actor, metaWindow, 'notify::fullscreen', () => handlers.onSizeChanged(actor));
 
     // Window focus changed.
-    connectActor(actor, actor.metaWindow, 'notify::appears-focused', () => {
-        if (actor.metaWindow) {
-            handlers.onFocusChanged(actor);
-        }
-    });
+    connectActor(actor, metaWindow, 'notify::appears-focused', () => handlers.onFocusChanged(actor));
 
     // Workspace or monitor of the window changed.
-    connectActor(actor, actor.metaWindow, 'workspace-changed', () => {
-        if (actor.metaWindow) {
-            handlers.onFocusChanged(actor);
-        }
-    });
+    connectActor(actor, metaWindow, 'workspace-changed', () => handlers.onFocusChanged(actor));
 
     handlers.onAddEffect(actor);
 }

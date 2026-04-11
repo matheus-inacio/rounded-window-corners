@@ -230,6 +230,7 @@ function refreshShadow(actor: RoundedWindowActor) {
  */
 function refreshRoundedCorners(actor: RoundedWindowActor): void {
     const win = actor.metaWindow;
+    if (!win) return;
 
     const windowInfo = actor.rwcCustomData;
     const effect = getRoundedCornersEffect(actor);
