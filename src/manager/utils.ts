@@ -4,6 +4,7 @@ import type Clutter from 'gi://Clutter';
 import type {RoundedCornersEffect} from '../effect/rounded_corners_effect.js';
 import type {Bounds, RoundedCornerSettings} from '../utils/types.js';
 
+import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
 import St from 'gi://St';
@@ -225,6 +226,7 @@ export function computeShadowActorOffset(
  * @param borderRadius - The border radius of the shadow actor.
  * @param shadow - The shadow settings for the window.
  * @param padding - The padding of the shadow actor.
+ * @param state - The optional window effect state containing the CSS cache.
  */
 export function updateShadowActorStyle(
     win: Meta.Window,
@@ -232,6 +234,7 @@ export function updateShadowActorStyle(
     borderRadius = GLOBAL_ROUNDED_CORNER_SETTINGS.borderRadius,
     shadow = FOCUSED_SHADOW,
     padding = GLOBAL_ROUNDED_CORNER_SETTINGS.padding,
+    state?: any
 ) {
     const {left, right, top, bottom} = padding;
 
@@ -274,7 +277,11 @@ export function updateShadowActorStyle(
                        ${left * scale}px;`;
 
     // Only update style and queue a redraw when the style actually changed.
-    if (child.style !== newChildStyle) {
+    if (state && state.lastShadowStyle !== newChildStyle) {
+        child.style = newChildStyle;
+        state.lastShadowStyle = newChildStyle;
+        child.queue_redraw();
+    } else if (!state && child.style !== newChildStyle) {
         child.style = newChildStyle;
         child.queue_redraw();
     }
@@ -385,6 +392,28 @@ function roundedCornersAllowedForWindowState(
     );
 }
 
+const NEEDLE_ADWAITA = new TextEncoder().encode('libadwaita-1.so');
+const NEEDLE_HANDY = new TextEncoder().encode('libhandy-1.so');
+
+function includesBytes(haystack: Uint8Array, needle: Uint8Array): boolean {
+    const needleLen = needle.length;
+    const limit = haystack.length - needleLen;
+    const firstByte = needle[0];
+
+    for (let i = 0; i <= limit; i++) {
+        if (haystack[i] !== firstByte) continue;
+
+        let j = 1;
+        for (; j < needleLen; j++) {
+            if (haystack[i + j] !== needle[j]) break;
+        }
+
+        if (j === needleLen) return true;
+    }
+
+    return false;
+}
+
 /**
  * Get the type of the application asynchronously (LibHandy/LibAdwaita/Other).
  *
@@ -394,32 +423,78 @@ function roundedCornersAllowedForWindowState(
 async function getAppTypeAsync(win: Meta.Window): Promise<AppType> {
     const wmClass = win.get_wm_class_instance();
 
-    // Check cache first
     if (wmClass && appTypeCache.has(wmClass)) {
         return appTypeCache.get(wmClass)!;
     }
 
-    try {
-        // May throw a permission error.
-        const contents = await readFileAsync(`/proc/${win.get_pid()}/maps`);
-        let type: AppType = 'Other';
+    return new Promise((resolve) => {
+        try {
+            const file = Gio.File.new_for_path(`/proc/${win.get_pid()}/maps`);
 
-        if (contents.includes('libhandy-1.so')) {
-            type = 'LibHandy';
-        }
-        else if (contents.includes('libadwaita-1.so')) {
-            type = 'LibAdwaita';
-        }
+            file.read_async(GLib.PRIORITY_DEFAULT, null, (_source, res) => {
+                try {
+                    const stream = file.read_finish(res);
 
-        // Populate cache
-        if (wmClass) {
-            appTypeCache.set(wmClass, type);
-        }
+                    const CHUNK_SIZE = 4096;
+                    let leftover = new Uint8Array(0);
 
-        return type;
-    } catch (e) {
-        // logError may not be globally defined safely.
-        logDebug(`Failed to determine AppType for ${win.title}: ${e}`);
-        return 'Other';
-    }
+                    const readChunk = () => {
+                        stream.read_bytes_async(
+                            CHUNK_SIZE,
+                            GLib.PRIORITY_DEFAULT,
+                            null,
+                            (_s, result) => {
+                                try {
+                                    const bytes = stream.read_bytes_finish(result);
+                                    const data = bytes.get_data();
+
+                                    if (!data || bytes.get_size() === 0) {
+                                        stream.close(null);
+                                        if (wmClass) appTypeCache.set(wmClass, 'Other');
+                                        return resolve('Other');
+                                    }
+
+                                    // Merge leftover + new chunk
+                                    const combined = new Uint8Array(leftover.length + data.length);
+                                    combined.set(leftover);
+                                    combined.set(data, leftover.length);
+
+                                    if (includesBytes(combined, NEEDLE_ADWAITA)) {
+                                        stream.close(null);
+                                        if (wmClass) appTypeCache.set(wmClass, 'LibAdwaita');
+                                        return resolve('LibAdwaita');
+                                    }
+
+                                    if (includesBytes(combined, NEEDLE_HANDY)) {
+                                        stream.close(null);
+                                        if (wmClass) appTypeCache.set(wmClass, 'LibHandy');
+                                        return resolve('LibHandy');
+                                    }
+
+                                    // Keep only tail (max needle length)
+                                    const maxLen = Math.max(
+                                        NEEDLE_ADWAITA.length,
+                                        NEEDLE_HANDY.length
+                                    );
+
+                                    leftover = combined.slice(-maxLen);
+
+                                    readChunk();
+                                } catch {
+                                    stream.close(null);
+                                    resolve('Other');
+                                }
+                            }
+                        );
+                    };
+
+                    readChunk();
+                } catch {
+                    resolve('Other');
+                }
+            });
+        } catch {
+            resolve('Other');
+        }
+    });
 }

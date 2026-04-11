@@ -33,6 +33,7 @@ export interface WindowEffectState {
     shadow: St.Bin;
     unminimizedTimeoutId: number;
     propertyBindings: GObject.Binding[];
+    lastShadowStyle?: string;
 }
 
 // Safely manages custom state tied to the window actor without mutating the actor itself
@@ -160,7 +161,9 @@ export function onRestacked(): void {
             continue;
         }
 
-        global.windowGroup.set_child_below_sibling(state.shadow, actor);
+        if (actor.get_previous_sibling() !== state.shadow) {
+            global.windowGroup.set_child_below_sibling(state.shadow, actor);
+        }
     }
 }
 
@@ -225,7 +228,7 @@ function refreshShadow(actor: RoundedWindowActor) {
 
     const {borderRadius, padding} = getRoundedCornersCfg(win);
 
-    updateShadowActorStyle(win, state.shadow, borderRadius, shadowSettings, padding);
+    updateShadowActorStyle(win, state.shadow, borderRadius, shadowSettings, padding, state);
 }
 
 /**

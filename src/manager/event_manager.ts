@@ -13,7 +13,7 @@ import GLib from 'gi://GLib';
 import {logDebug} from '../utils/log.js';
 import * as handlers from './event_handlers.js';
 
-const pendingEffectApplications = new Map<Meta.WindowActor, number>();
+const pendingEffectApplications = new WeakMap<Meta.WindowActor, number>();
 const pendingResizeUpdates = new WeakSet<RoundedWindowActor>();
 
 class GlobalSignalManager {
@@ -35,7 +35,7 @@ class GlobalSignalManager {
 }
 
 class ActorSignalManager {
-    private connections = new Map<RoundedWindowActor | Meta.WindowActor, { object: GObject.Object; id: number }[]>();
+    private connections = new WeakMap<RoundedWindowActor | Meta.WindowActor, { object: GObject.Object; id: number }[]>();
 
     connect(actor: RoundedWindowActor | Meta.WindowActor, object: GObject.Object, signal: string, callback: (...args: any[]) => any): number {
         const id = object.connect(signal, callback);
@@ -137,12 +137,12 @@ export function enableEffect() {
 }
 
 export function disableEffect() {
-    for (const id of pendingEffectApplications.values()) {
-        GLib.source_remove(id);
-    }
-    pendingEffectApplications.clear();
-
     for (const actor of global.get_window_actors()) {
+        const id = pendingEffectApplications.get(actor as Meta.WindowActor);
+        if (id) {
+            GLib.source_remove(id);
+            pendingEffectApplications.delete(actor as Meta.WindowActor);
+        }
         removeEffectFrom(actor as RoundedWindowActor);
     }
 
