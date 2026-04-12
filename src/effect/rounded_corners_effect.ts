@@ -21,7 +21,6 @@ class Uniforms {
     borderColor = 0;
     borderedAreaBounds = 0;
     borderedAreaClipRadius = 0;
-    exponent = 0;
     pixelStep = 0;
 }
 
@@ -73,7 +72,7 @@ export const RoundedCornersEffect = GObject.registerClass(
             const borderColor = config.borderColor;
 
             const outerRadius = config.borderRadius * scaleFactor;
-            const {padding, smoothing} = config;
+            const {padding} = config;
 
             const bounds = [
                 windowBounds.x1 + padding.left * scaleFactor,
@@ -99,15 +98,12 @@ export const RoundedCornersEffect = GObject.registerClass(
                 1 / this.actor.get_height(),
             ];
 
-            // This is needed for squircle corners
-            let exponent = smoothing * 10 + 2;
-            let radius = outerRadius * 0.5 * exponent;
+            let radius = outerRadius * 2.0;
             const maxRadius = Math.min(
                 bounds[3] - bounds[0],
                 bounds[4] - bounds[1],
             );
             if (radius > maxRadius) {
-                exponent *= maxRadius / radius;
                 radius = maxRadius;
             }
             borderedAreaRadius *= radius / outerRadius;
@@ -120,7 +116,6 @@ export const RoundedCornersEffect = GObject.registerClass(
                 borderedAreaBounds,
                 borderedAreaRadius,
                 pixelStep,
-                exponent,
             );
         }
 
@@ -132,7 +127,6 @@ export const RoundedCornersEffect = GObject.registerClass(
             borderedAreaBounds: number[],
             borderedAreaRadius: number,
             pixelStep: number[],
-            exponent: number,
         ) {
             const uniforms = Effect.uniforms;
             this.set_uniform_float(uniforms.bounds, 4, bounds);
@@ -148,7 +142,6 @@ export const RoundedCornersEffect = GObject.registerClass(
                 borderedAreaRadius,
             ]);
             this.set_uniform_float(uniforms.pixelStep, 2, pixelStep);
-            this.set_uniform_float(uniforms.exponent, 1, [exponent]);
             this.queue_repaint();
         }
     },
