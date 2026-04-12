@@ -87,9 +87,14 @@ export function onAddEffect(actor: RoundedWindowActor) {
 }
 
 export function onRemoveEffect(actor: RoundedWindowActor): void {
-    unwrapActor(actor)?.remove_effect_by_name(ROUNDED_CORNERS_EFFECT);
-
     const state = windowStateMap.get(actor);
+
+    try {
+        unwrapActor(actor)?.remove_effect_by_name(ROUNDED_CORNERS_EFFECT);
+    } catch (err) {
+        logDebug(`Ignored error during effect removal: ${err}`);
+    }
+
     if (!state) {
         return;
     }

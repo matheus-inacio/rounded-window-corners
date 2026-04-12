@@ -76,8 +76,14 @@ export function clearMutterSettingsCache() {
  * @returns The correct actor that the effect should be applied to.
  */
 export function unwrapActor(actor: Meta.WindowActor): Clutter.Actor | null {
-    const type = actor.metaWindow.get_client_type();
-    return type === Meta.WindowClientType.X11 ? actor.get_first_child() : actor;
+    try {
+        // If the C object is already destroyed, reading .metaWindow will throw.
+        const type = actor.metaWindow.get_client_type();
+        return type === Meta.WindowClientType.X11 ? actor.get_first_child() : actor;
+    } catch (err) {
+        // Object already disposed
+        return null; 
+    }
 }
 
 /**
