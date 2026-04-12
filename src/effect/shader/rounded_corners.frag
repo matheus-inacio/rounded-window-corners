@@ -9,71 +9,43 @@ uniform float borderedAreaClipRadius;
 
 uniform vec2 pixelStep;
 
-// Highly optimized squircle math (replaces expensive pow() functions)
-float getSquircleDist(vec2 p, vec2 center) {
-    vec2 delta = abs(p - center);
-    vec2 deltaSq = delta * delta;
-    vec2 powD4 = deltaSq * deltaSq;
-    return sqrt(sqrt(powD4.x + powD4.y));
+// 1. Optimized squircle math (takes the pre-folded delta vector)
+float getSquircleDist(vec2 delta) {
+    vec2 dSq = delta * delta;
+    // dot() is hardware-optimized and perfectly replaces (powD4.x + powD4.y)
+    return sqrt(sqrt(dot(dSq, dSq)));
 }
 
-// Reusable function to calculate alpha, cleanly determining the correct center
+// 2. 100% Branchless SDF (Signed Distance Field)
 float getPointAlpha(vec2 p, vec4 bnd, float rad) {
-    // If outside this specific bounding box, it's invisible
-    if (p.x < bnd.x || p.x > bnd.z || p.y < bnd.y || p.y > bnd.w) {
-        return 0.0;
-    }
+    // Find the center and half-dimensions of the bounding box
+    vec2 center = (bnd.xy + bnd.zw) * 0.5;
+    vec2 halfSize = (bnd.zw - bnd.xy) * 0.5;
 
-    vec2 center = vec2(0.0);
-    bool inX = false;
-    bool inY = false;
+    // Fold the space into the first quadrant, relative to the corner center
+    vec2 q = abs(p - center) - (halfSize - rad);
 
-    // Find X center
-    float cLeft = bnd.x + rad;
-    float cRight = bnd.z - rad;
-    if (p.x < cLeft) {
-        center.x = cLeft;
-        inX = true;
-    } else if (p.x > cRight) {
-        center.x = cRight;
-        inX = true;
-    }
+    // Distance vector from the inner corner center (is (0,0) if inside the straight edges)
+    vec2 cornerDist = max(q, 0.0);
 
-    // Find Y center
-    float cTop = bnd.y + rad;
-    float cBottom = bnd.w - rad;
-    if (p.y < cTop) {
-        center.y = cTop;
-        inY = true;
-    } else if (p.y > cBottom) {
-        center.y = cBottom;
-        inY = true;
-    }
+    // Calculate the continuous distance field
+    float squircleDist = getSquircleDist(cornerDist);
+    float innerDist = min(max(q.x, q.y), 0.0);
+    
+    // Total distance from the edge (positive = outside, negative = inside, 0 = exact edge)
+    float d = squircleDist + innerDist - rad;
 
-    // Only do the squircle math if we are actually in a corner
-    if (inX && inY) {
-        float dist = getSquircleDist(p, center);
-        return clamp(rad - dist + 0.5, 0.0, 1.0);
-    }
-
-    // Inside the bounds, but not in a corner
-    return 1.0;
+    // Branchless, uniform anti-aliasing for BOTH straight edges and corners
+    return clamp(0.5 - d, 0.0, 1.0);
 }
 
 void main() {
     vec2 p = cogl_tex_coord0_in.xy / pixelStep;
 
-    // Global early exit: saves GPU cycles by entirely 
-    / skipping pixels outside the window
-    if (p.x < bounds.x || p.x > bounds.z || p.y < bounds.y || p.y > bounds.w) {
-        cogl_color_out = vec4(0.0);
-        return;
-    }
-
     float pointAlpha = getPointAlpha(p, bounds, clipRadius);
 
-    if (borderWidth > 0.9 || borderWidth < -0.9) {
-        // Calculate the inner area using its own proper bounds and radius
+    // 3. Simplified uniform check
+    if (abs(borderWidth) > 0.9) {
         float borderedAreaAlpha = getPointAlpha(p, borderedAreaBounds, borderedAreaClipRadius);
 
         if (borderWidth > 0.0) {
