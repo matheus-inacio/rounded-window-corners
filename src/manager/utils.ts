@@ -293,6 +293,46 @@ export function updateShadowActorStyle(
     }
 }
 
+export function isPermanentlyIneligible(
+    win: Meta.Window & {_appType?: AppType},
+): boolean {
+    // Skip rounded corners for the DING (Desktop Icons NG) extension.
+    //
+    // https://extensions.gnome.org/extension/2087/desktop-icons-ng-ding/
+    if (win.gtkApplicationId === 'com.rastersoft.ding') {
+        return true;
+    }
+
+    // Skip blacklisted applications.
+    const wmClass = win.get_wm_class_instance();
+    if (wmClass == null) {
+        logDebug(`Warning: wm_class_instance of ${win}: ${win.title} is null`);
+        return true;
+    }
+    // handles blacklist / whitelist
+    const isException = BLACKLIST.includes(wmClass);
+    if (isException !== WHITELIST_MODE) {
+        return true;
+    }
+
+    // Only apply the effect to normal windows (skip menus, tooltips, etc.)
+    if (
+        win.windowType !== Meta.WindowType.NORMAL &&
+        win.windowType !== Meta.WindowType.DIALOG &&
+        win.windowType !== Meta.WindowType.MODAL_DIALOG
+    ) {
+        return true;
+    }
+
+    if (win._appType !== undefined) {
+        if (skipRoundedCornersForLibToolkit(win._appType, isException)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 /**
  * Check whether a window should have rounded corners.
  *
@@ -302,31 +342,7 @@ export function updateShadowActorStyle(
 export function shouldEnableEffect(
     win: Meta.Window & {_appType?: AppType; _appTypePromise?: Promise<void>},
 ): boolean {
-    // Skip rounded corners for the DING (Desktop Icons NG) extension.
-    //
-    // https://extensions.gnome.org/extension/2087/desktop-icons-ng-ding/
-    if (win.gtkApplicationId === 'com.rastersoft.ding') {
-        return false;
-    }
-
-    // Skip blacklisted applications.
-    const wmClass = win.get_wm_class_instance();
-    if (wmClass == null) {
-        logDebug(`Warning: wm_class_instance of ${win}: ${win.title} is null`);
-        return false;
-    }
-    // handles blacklist / whitelist
-    const isException = BLACKLIST.includes(wmClass);
-    if (isException !== WHITELIST_MODE) {
-        return false;
-    }
-
-    // Only apply the effect to normal windows (skip menus, tooltips, etc.)
-    if (
-        win.windowType !== Meta.WindowType.NORMAL &&
-        win.windowType !== Meta.WindowType.DIALOG &&
-        win.windowType !== Meta.WindowType.MODAL_DIALOG
-    ) {
+    if (isPermanentlyIneligible(win)) {
         return false;
     }
 
@@ -361,10 +377,6 @@ export function shouldEnableEffect(
 
     const appType = win._appType;
     logDebug(`Check Type of window:${win.title} => ${appType}`);
-
-    if (skipRoundedCornersForLibToolkit(appType, isException)) {
-        return false;
-    }
 
     const cfg = getRoundedCornersCfg(win);
     return roundedCornersAllowedForWindowState(win, cfg);

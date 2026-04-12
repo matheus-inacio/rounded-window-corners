@@ -12,6 +12,7 @@ import GLib from 'gi://GLib';
 
 import {logDebug} from '../utils/log.js';
 import * as handlers from './event_handlers.js';
+import {isPermanentlyIneligible} from './utils.js';
 
 const pendingEffectApplications = new WeakMap<Meta.WindowActor, number>();
 const pendingResizeUpdates = new WeakSet<RoundedWindowActor>();
@@ -153,6 +154,12 @@ export function disableEffect() {
  * Throttles rapid size updates (e.g., window dragging) to a single idle frame.
  */
 function throttledResizeHandler(actor: RoundedWindowActor) {
+    if (actor.metaWindow && isPermanentlyIneligible(actor.metaWindow)) {
+        logDebug(`Optimization skip triggered: Detaching signals and removing effect from ${actor.metaWindow.title}`);
+        removeEffectFrom(actor);
+        return;
+    }
+
     if (pendingResizeUpdates.has(actor)) return;
     
     pendingResizeUpdates.add(actor);
@@ -161,6 +168,15 @@ function throttledResizeHandler(actor: RoundedWindowActor) {
         handlers.onSizeChanged(actor);
         return GLib.SOURCE_REMOVE;
     });
+}
+
+function handleFocusChanged(actor: RoundedWindowActor) {
+    if (actor.metaWindow && isPermanentlyIneligible(actor.metaWindow)) {
+        logDebug(`Optimization skip triggered: Detaching signals and removing effect from ${actor.metaWindow.title}`);
+        removeEffectFrom(actor);
+        return;
+    }
+    handlers.onFocusChanged(actor);
 }
 
 function applyEffectTo(actor: RoundedWindowActor) {
@@ -179,6 +195,11 @@ function applyEffectTo(actor: RoundedWindowActor) {
         return;
     }
 
+    if (isPermanentlyIneligible(metaWindow)) {
+        logDebug(`Skipping ${metaWindow.title} (Permanently Ineligible on Initialization)`);
+        return; 
+    }
+
         // Window resized.
     //
     // The signal has to be connected both to the actor and the texture. Why is
@@ -192,9 +213,9 @@ function applyEffectTo(actor: RoundedWindowActor) {
     actorSignals.connect(actor, metaWindow, 'notify::fullscreen', () => throttledResizeHandler(actor));
 
     // Focus / Workspace changes
-    actorSignals.connect(actor, metaWindow, 'notify::appears-focused', () => handlers.onFocusChanged(actor));
+    actorSignals.connect(actor, metaWindow, 'notify::appears-focused', () => handleFocusChanged(actor));
     // Workspace or monitor of the window changed.
-    actorSignals.connect(actor, metaWindow, 'workspace-changed', () => handlers.onFocusChanged(actor));
+    actorSignals.connect(actor, metaWindow, 'workspace-changed', () => handleFocusChanged(actor));
 
     handlers.onAddEffect(actor);
 }
