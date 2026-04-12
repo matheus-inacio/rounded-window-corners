@@ -398,28 +398,6 @@ function roundedCornersAllowedForWindowState(
     );
 }
 
-const NEEDLE_ADWAITA = new TextEncoder().encode('libadwaita-1.so');
-const NEEDLE_HANDY = new TextEncoder().encode('libhandy-1.so');
-
-function includesBytes(haystack: Uint8Array, needle: Uint8Array): boolean {
-    const needleLen = needle.length;
-    const limit = haystack.length - needleLen;
-    const firstByte = needle[0];
-
-    for (let i = 0; i <= limit; i++) {
-        if (haystack[i] !== firstByte) continue;
-
-        let j = 1;
-        for (; j < needleLen; j++) {
-            if (haystack[i + j] !== needle[j]) break;
-        }
-
-        if (j === needleLen) return true;
-    }
-
-    return false;
-}
-
 /**
  * Get the type of the application asynchronously (LibHandy/LibAdwaita/Other).
  *
@@ -428,7 +406,6 @@ function includesBytes(haystack: Uint8Array, needle: Uint8Array): boolean {
  */
 async function getAppTypeAsync(win: Meta.Window): Promise<AppType> {
     const wmClass = win.get_wm_class_instance();
-
     if (wmClass && appTypeCache.has(wmClass)) {
         return appTypeCache.get(wmClass)!;
     }
@@ -436,65 +413,42 @@ async function getAppTypeAsync(win: Meta.Window): Promise<AppType> {
     return new Promise((resolve) => {
         try {
             const file = Gio.File.new_for_path(`/proc/${win.get_pid()}/maps`);
-
             file.read_async(GLib.PRIORITY_DEFAULT, null, (_source, res) => {
                 try {
-                    const stream = file.read_finish(res);
+                    const baseStream = file.read_finish(res);
+                    const dataStream = new Gio.DataInputStream({ base_stream: baseStream });
 
-                    const CHUNK_SIZE = 4096;
-                    let leftover = new Uint8Array(0);
-
-                    const readChunk = () => {
-                        stream.read_bytes_async(
-                            CHUNK_SIZE,
-                            GLib.PRIORITY_DEFAULT,
-                            null,
-                            (_s, result) => {
-                                try {
-                                    const bytes = stream.read_bytes_finish(result);
-                                    const data = bytes.get_data();
-
-                                    if (!data || bytes.get_size() === 0) {
-                                        stream.close(null);
-                                        if (wmClass) appTypeCache.set(wmClass, 'Other');
-                                        return resolve('Other');
-                                    }
-
-                                    // Merge leftover + new chunk
-                                    const combined = new Uint8Array(leftover.length + data.length);
-                                    combined.set(leftover);
-                                    combined.set(data, leftover.length);
-
-                                    if (includesBytes(combined, NEEDLE_ADWAITA)) {
-                                        stream.close(null);
-                                        if (wmClass) appTypeCache.set(wmClass, 'LibAdwaita');
-                                        return resolve('LibAdwaita');
-                                    }
-
-                                    if (includesBytes(combined, NEEDLE_HANDY)) {
-                                        stream.close(null);
-                                        if (wmClass) appTypeCache.set(wmClass, 'LibHandy');
-                                        return resolve('LibHandy');
-                                    }
-
-                                    // Keep only tail (max needle length)
-                                    const maxLen = Math.max(
-                                        NEEDLE_ADWAITA.length,
-                                        NEEDLE_HANDY.length
-                                    );
-
-                                    leftover = combined.slice(-maxLen);
-
-                                    readChunk();
-                                } catch {
-                                    stream.close(null);
-                                    resolve('Other');
+                    const readNextLine = () => {
+                        dataStream.read_line_async(GLib.PRIORITY_DEFAULT, null, (_source, lineRes) => {
+                            try {
+                                const [lineBytes] = dataStream.read_line_finish_utf8(lineRes);
+                                
+                                if (lineBytes === null) {
+                                    dataStream.close(null);
+                                    if (wmClass) appTypeCache.set(wmClass, 'Other');
+                                    return resolve('Other');
                                 }
+                    
+                                if (lineBytes.includes('libadwaita-1.so')) {
+                                    dataStream.close(null);
+                                    if (wmClass) appTypeCache.set(wmClass, 'LibAdwaita');
+                                    return resolve('LibAdwaita');
+                                }
+                    
+                                if (lineBytes.includes('libhandy-1.so')) {
+                                    dataStream.close(null);
+                                    if (wmClass) appTypeCache.set(wmClass, 'LibHandy');
+                                    return resolve('LibHandy');
+                                }
+                    
+                                readNextLine();
+                            } catch {
+                                dataStream.close(null);
+                                resolve('Other');
                             }
-                        );
+                        });
                     };
-
-                    readChunk();
+                    readNextLine();
                 } catch {
                     resolve('Other');
                 }
