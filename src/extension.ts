@@ -11,7 +11,7 @@ import {logDebug} from './utils/log.js';
 export default class RoundedWindowCornersReborn extends Extension {
     // The extension works by overriding (monkey patching) the code of GNOME
     // Shell's internal methods. InjectionManager is a convenience class that
-    // stores references to the original methods and allows to easily restore
+    // stores references to the original methods and allows easily restoring
     // them when the extension is disabled.
     #injectionManager: InjectionManager | null = null;
 
@@ -29,7 +29,7 @@ export default class RoundedWindowCornersReborn extends Extension {
 
                     layoutManager.disconnect(
                         // biome-ignore lint/style/noNonNullAssertion: Since this happens inside 
-                        // of the connection, there is no way for this to be null.
+                        //  the connection, there is no way for this to be null.
                         this.#layoutManagerStartupConnection!,
                     );
                 },

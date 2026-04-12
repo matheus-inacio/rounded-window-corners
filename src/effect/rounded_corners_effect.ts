@@ -61,13 +61,15 @@ export const RoundedCornersEffect = GObject.registerClass(
          * @param scaleFactor - Desktop scaling factor
          * @param config - Rounded corners configuration
          * @param windowBounds - Bounds of the window without padding
+         * @param showBorder - Should draw borders
          */
         updateUniforms(
             scaleFactor: number,
             config: RoundedCornerSettings,
             windowBounds: Bounds,
+            showBorder: boolean,
         ) {
-            const borderWidth = BORDER_WIDTH * scaleFactor;
+            const borderWidth = showBorder ? BORDER_WIDTH * scaleFactor : 0;
             const borderColor = config.borderColor;
 
             const outerRadius = config.borderRadius * scaleFactor;

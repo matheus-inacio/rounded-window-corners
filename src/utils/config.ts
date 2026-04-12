@@ -22,7 +22,7 @@ export const GLOBAL_ROUNDED_CORNER_SETTINGS: RoundedCornerSettings = {
         top: 1,
         bottom: 1,
     },
-    borderColor: [0.5, 0.5, 0.5, 1.0],
+    borderColor: [0.2, 0.2, 0.2, 1.0],
     enabled: true,
 };
 

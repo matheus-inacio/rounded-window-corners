@@ -269,10 +269,15 @@ function refreshRoundedCorners(actor: RoundedWindowActor): void {
     // When window size is changed, update uniforms for corner rounding shader.
     const cfg = getRoundedCornersCfg(win);
     const windowContentOffset = computeWindowContentsOffset(win);
+    const showBorder =
+        !win.maximizedHorizontally &&
+        !win.maximizedVertically &&
+        !win.fullscreen;
     effect.updateUniforms(
         windowScaleFactor(win),
         cfg,
         computeBounds(actor, windowContentOffset),
+        showBorder,
     );
 
     // Update BindConstraint for the shadow
