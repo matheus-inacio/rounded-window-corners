@@ -15,7 +15,7 @@ export const GLOBAL_ROUNDED_CORNER_SETTINGS: RoundedCornerSettings = {
         fullscreen: false,
     },
     borderRadius: 15,
-    smoothing: 0,
+    smoothing: 0.2,
     padding: {
         left: 1,
         right: 1,
@@ -50,7 +50,7 @@ export const BLACKLIST: string[] = [];
 export const WHITELIST_MODE = false;
 export const SKIP_LIBADWAITA_APP = true;
 export const SKIP_LIBHANDY_APP = false;
-export const BORDER_WIDTH = 0;
+export const BORDER_WIDTH = 1;
 export const KEEP_SHADOW_FOR_MAXIMIZED_FULLSCREEN = false;
 export const DEBUG_MODE = false;
 export const TWEAK_KITTY_TERMINAL = false;
