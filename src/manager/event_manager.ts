@@ -103,13 +103,13 @@ export function enableEffect() {
 
             const scheduleApply = () => {
                 // Bail out immediately if the actor is already in the process of being destroyed
-                if (typeof actor.is_destroyed === 'function' && actor.is_destroyed()) return;
+                if (!isAlive(actor)) return;
 
                 const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
                     pendingEffectApplications.delete(actor);
                     
                     // Double-check inside the idle loop
-                    if (typeof actor.is_destroyed === 'function' && actor.is_destroyed()) return GLib.SOURCE_REMOVE;
+                    if (!isAlive(actor)) return GLib.SOURCE_REMOVE;
                     
                     applyEffectTo(actor as RoundedWindowActor);
                     return GLib.SOURCE_REMOVE;
@@ -188,7 +188,7 @@ function throttledResizeHandler(actor: RoundedWindowActor) {
         
         // Prevent the callback from running if the actor was destroyed between 
         // the event firing and this idle frame executing.
-        if (typeof actor.is_destroyed === 'function' && actor.is_destroyed()) {
+        if (!isAlive(actor)) {
             return GLib.SOURCE_REMOVE;
         }
 
@@ -210,7 +210,7 @@ function handleFocusChanged(actor: RoundedWindowActor) {
 
 function applyEffectTo(actor: RoundedWindowActor) {
     // Bail out immediately if the actor has been destroyed
-    if (typeof actor.is_destroyed === 'function' && actor.is_destroyed()) {
+    if (!isAlive(actor)) {
         return;
     }
 
@@ -265,4 +265,8 @@ function removeEffectFrom(actor: RoundedWindowActor) {
 
     actorSignals.disconnectAll(actor);
     handlers.onRemoveEffect(actor);
+}
+
+function isAlive(obj: any): boolean {
+    return !(obj?.is_destroyed?.());
 }
