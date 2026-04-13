@@ -15,7 +15,8 @@ import * as handlers from './event_handlers.js';
 import {isPermanentlyIneligible} from './utils.js';
 
 const pendingEffectApplications = new WeakMap<Meta.WindowActor, number>();
-const pendingResizeUpdates = new WeakSet<RoundedWindowActor>();
+const pendingResizeUpdates = new WeakMap<RoundedWindowActor, number>();
+const pendingWmClassListeners = new WeakMap<Meta.Window, number>();
 
 class GlobalSignalManager {
     private connections: { object: GObject.Object; id: number }[] = [];
@@ -101,8 +102,15 @@ export function enableEffect() {
             const actor = win.get_compositor_private() as Meta.WindowActor;
 
             const scheduleApply = () => {
+                // Bail out immediately if the actor is already in the process of being destroyed
+                if (typeof actor.is_destroyed === 'function' && actor.is_destroyed()) return;
+
                 const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
                     pendingEffectApplications.delete(actor);
+                    
+                    // Double-check inside the idle loop
+                    if (typeof actor.is_destroyed === 'function' && actor.is_destroyed()) return GLib.SOURCE_REMOVE;
+                    
                     applyEffectTo(actor as RoundedWindowActor);
                     return GLib.SOURCE_REMOVE;
                 });
@@ -114,8 +122,10 @@ export function enableEffect() {
             if (win.get_wm_class_instance() == null) {
                 const notifyId = win.connect('notify::wm-class', () => {
                     win.disconnect(notifyId);
+                    pendingWmClassListeners.delete(win);
                     scheduleApply();
                 });
+                pendingWmClassListeners.set(win, notifyId);
             } else {
                 scheduleApply();
             }
@@ -126,6 +136,17 @@ export function enableEffect() {
     globalSignals.connect(wm, 'unminimize', (_: Shell.WM, actor: Meta.WindowActor) => handlers.onUnminimize(actor as RoundedWindowActor));
 
     globalSignals.connect(wm, 'destroy', (_: Shell.WM, actor: Meta.WindowActor) => {
+        const win = actor.metaWindow;
+        
+        // Clean up the wm-class listener if the window is destroyed before the class resolves
+        if (win) {
+            const notifyId = pendingWmClassListeners.get(win);
+            if (notifyId) {
+                win.disconnect(notifyId);
+                pendingWmClassListeners.delete(win);
+            }
+        }
+
         const idleId = pendingEffectApplications.get(actor);
         if (idleId) {
             GLib.source_remove(idleId);
@@ -162,12 +183,20 @@ function throttledResizeHandler(actor: RoundedWindowActor) {
 
     if (pendingResizeUpdates.has(actor)) return;
     
-    pendingResizeUpdates.add(actor);
-    GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+    const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
         pendingResizeUpdates.delete(actor);
+        
+        // Prevent the callback from running if the actor was destroyed between 
+        // the event firing and this idle frame executing.
+        if (typeof actor.is_destroyed === 'function' && actor.is_destroyed()) {
+            return GLib.SOURCE_REMOVE;
+        }
+
         handlers.onSizeChanged(actor);
         return GLib.SOURCE_REMOVE;
     });
+
+    pendingResizeUpdates.set(actor, idleId);
 }
 
 function handleFocusChanged(actor: RoundedWindowActor) {
@@ -180,6 +209,11 @@ function handleFocusChanged(actor: RoundedWindowActor) {
 }
 
 function applyEffectTo(actor: RoundedWindowActor) {
+    // Bail out immediately if the actor has been destroyed
+    if (typeof actor.is_destroyed === 'function' && actor.is_destroyed()) {
+        return;
+    }
+
     if (!actor.firstChild) {
         const signalId = actorSignals.connect(actor, actor, 'notify::first-child', () => {
             actorSignals.disconnect(actor, signalId);
@@ -200,7 +234,7 @@ function applyEffectTo(actor: RoundedWindowActor) {
         return; 
     }
 
-        // Window resized.
+    // Window resized.
     //
     // The signal has to be connected both to the actor and the texture. Why is
     // that? I have no idea. But without that, weird bugs can happen. For
@@ -221,6 +255,14 @@ function applyEffectTo(actor: RoundedWindowActor) {
 }
 
 function removeEffectFrom(actor: RoundedWindowActor) {
+    // Intercept and destroy the background resize task so it doesn't 
+    // accidentally resurrect the shadow after the window is closed.
+    const resizeIdleId = pendingResizeUpdates.get(actor);
+    if (resizeIdleId) {
+        GLib.source_remove(resizeIdleId);
+        pendingResizeUpdates.delete(actor);
+    }
+
     actorSignals.disconnectAll(actor);
     handlers.onRemoveEffect(actor);
 }
