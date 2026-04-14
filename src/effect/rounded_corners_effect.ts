@@ -27,7 +27,14 @@ class Uniforms {
 export const RoundedCornersEffect = GObject.registerClass(
     {},
     class Effect extends Shell.GLSLEffect {
-        #lastBounds: number[] = [];
+        #bounds = [0, 0, 0, 0];
+        #borderedAreaBounds = [0, 0, 0, 0];
+        #pixelStep = [0, 0];
+        #clipRadius = [0];
+        #borderWidthUniform = [0];
+        #borderedAreaRadiusUniform = [0];
+
+        #lastBounds = [Number.NaN, Number.NaN, Number.NaN, Number.NaN];
         #lastRadius = Number.NaN;
         #lastBorderWidth = Number.NaN;
         #lastBorderColor: [number, number, number, number] = [
@@ -36,9 +43,14 @@ export const RoundedCornersEffect = GObject.registerClass(
             Number.NaN,
             Number.NaN,
         ];
-        #lastBorderedAreaBounds: number[] = [];
+        #lastBorderedAreaBounds = [
+            Number.NaN,
+            Number.NaN,
+            Number.NaN,
+            Number.NaN,
+        ];
         #lastBorderedAreaRadius = Number.NaN;
-        #lastPixelStep: number[] = [];
+        #lastPixelStep = [Number.NaN, Number.NaN];
 
         /**
          * To store a uniform value, we need to know its location in the shader,
@@ -87,19 +99,15 @@ export const RoundedCornersEffect = GObject.registerClass(
             const outerRadius = config.borderRadius * scaleFactor;
             const {padding} = config;
 
-            const bounds = [
-                windowBounds.x1 + padding.left * scaleFactor,
-                windowBounds.y1 + padding.top * scaleFactor,
-                windowBounds.x2 - padding.right * scaleFactor,
-                windowBounds.y2 - padding.bottom * scaleFactor,
-            ];
+            this.#bounds[0] = windowBounds.x1 + padding.left * scaleFactor;
+            this.#bounds[1] = windowBounds.y1 + padding.top * scaleFactor;
+            this.#bounds[2] = windowBounds.x2 - padding.right * scaleFactor;
+            this.#bounds[3] = windowBounds.y2 - padding.bottom * scaleFactor;
 
-            const borderedAreaBounds = [
-                bounds[0] + borderWidth,
-                bounds[1] + borderWidth,
-                bounds[2] - borderWidth,
-                bounds[3] - borderWidth,
-            ];
+            this.#borderedAreaBounds[0] = this.#bounds[0] + borderWidth;
+            this.#borderedAreaBounds[1] = this.#bounds[1] + borderWidth;
+            this.#borderedAreaBounds[2] = this.#bounds[2] - borderWidth;
+            this.#borderedAreaBounds[3] = this.#bounds[3] - borderWidth;
 
             let borderedAreaRadius = Math.max(outerRadius - borderWidth, 0.0);
 
@@ -109,12 +117,13 @@ export const RoundedCornersEffect = GObject.registerClass(
                 return;
             }
 
-            const pixelStep = [1 / actorWidth, 1 / actorHeight];
+            this.#pixelStep[0] = 1 / actorWidth;
+            this.#pixelStep[1] = 1 / actorHeight;
 
             let radius = outerRadius * 2.0;
             const maxRadius = Math.min(
-                bounds[2] - bounds[0],
-                bounds[3] - bounds[1],
+                this.#bounds[2] - this.#bounds[0],
+                this.#bounds[3] - this.#bounds[1],
             );
             if (radius > maxRadius) {
                 radius = maxRadius;
@@ -127,13 +136,13 @@ export const RoundedCornersEffect = GObject.registerClass(
             }
 
             this.#setUniforms(
-                bounds,
+                this.#bounds,
                 radius,
                 borderWidth,
                 borderColor,
-                borderedAreaBounds,
+                this.#borderedAreaBounds,
                 borderedAreaRadius,
-                pixelStep,
+                this.#pixelStep,
             );
         }
 
@@ -160,31 +169,45 @@ export const RoundedCornersEffect = GObject.registerClass(
 
             const uniforms = Effect.uniforms;
             this.set_uniform_float(uniforms.bounds, 4, bounds);
-            this.set_uniform_float(uniforms.clipRadius, 1, [radius]);
-            this.set_uniform_float(uniforms.borderWidth, 1, [borderWidth]);
+            this.#clipRadius[0] = radius;
+            this.#borderWidthUniform[0] = borderWidth;
+            this.#borderedAreaRadiusUniform[0] = borderedAreaRadius;
+            this.set_uniform_float(uniforms.clipRadius, 1, this.#clipRadius);
+            this.set_uniform_float(
+                uniforms.borderWidth,
+                1,
+                this.#borderWidthUniform,
+            );
             this.set_uniform_float(uniforms.borderColor, 4, borderColor);
             this.set_uniform_float(
                 uniforms.borderedAreaBounds,
                 4,
                 borderedAreaBounds,
             );
-            this.set_uniform_float(uniforms.borderedAreaClipRadius, 1, [
-                borderedAreaRadius,
-            ]);
+            this.set_uniform_float(
+                uniforms.borderedAreaClipRadius,
+                1,
+                this.#borderedAreaRadiusUniform,
+            );
             this.set_uniform_float(uniforms.pixelStep, 2, pixelStep);
 
-            this.#lastBounds = bounds;
+            this.#lastBounds[0] = bounds[0];
+            this.#lastBounds[1] = bounds[1];
+            this.#lastBounds[2] = bounds[2];
+            this.#lastBounds[3] = bounds[3];
             this.#lastRadius = radius;
             this.#lastBorderWidth = borderWidth;
-            this.#lastBorderColor = [...borderColor] as [
-                number,
-                number,
-                number,
-                number,
-            ];
-            this.#lastBorderedAreaBounds = borderedAreaBounds;
+            this.#lastBorderColor[0] = borderColor[0];
+            this.#lastBorderColor[1] = borderColor[1];
+            this.#lastBorderColor[2] = borderColor[2];
+            this.#lastBorderColor[3] = borderColor[3];
+            this.#lastBorderedAreaBounds[0] = borderedAreaBounds[0];
+            this.#lastBorderedAreaBounds[1] = borderedAreaBounds[1];
+            this.#lastBorderedAreaBounds[2] = borderedAreaBounds[2];
+            this.#lastBorderedAreaBounds[3] = borderedAreaBounds[3];
             this.#lastBorderedAreaRadius = borderedAreaRadius;
-            this.#lastPixelStep = pixelStep;
+            this.#lastPixelStep[0] = pixelStep[0];
+            this.#lastPixelStep[1] = pixelStep[1];
             this.queue_repaint();
         }
     },

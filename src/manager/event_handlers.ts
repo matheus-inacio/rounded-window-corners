@@ -34,6 +34,7 @@ export interface WindowEffectState {
     unminimizedTimeoutId: number;
     propertyBindings: GObject.Binding[];
     lastShadowStyle?: string;
+    lastShadowStyleKey?: string;
 }
 
 // Safely manages custom state tied to the window actor without mutating the actor itself

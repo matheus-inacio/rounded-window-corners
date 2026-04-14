@@ -22,8 +22,12 @@ import {
     WHITELIST_MODE,
 } from '../utils/config.js';
 import {APP_SHADOWS, ROUNDED_CORNERS_EFFECT, SHADOW_PADDING,} from '../utils/constants.js';
-import {readFileAsync} from '../utils/file.js';
 import {logDebug} from '../utils/log.js';
+
+type ShadowStyleState = {
+    lastShadowStyle?: string;
+    lastShadowStyleKey?: string;
+};
 
 // Cache mutter settings to avoid creating a new Gio.Settings object on every
 // call to windowScaleFactor (which is called per-frame during overview animations).
@@ -240,7 +244,7 @@ export function updateShadowActorStyle(
     borderRadius = GLOBAL_ROUNDED_CORNER_SETTINGS.borderRadius,
     shadow = FOCUSED_SHADOW,
     padding = GLOBAL_ROUNDED_CORNER_SETTINGS.padding,
-    state?: any
+    state?: ShadowStyleState,
 ) {
     const {left, right, top, bottom} = padding;
 
@@ -275,6 +279,17 @@ export function updateShadowActorStyle(
             win.maximizedVertically ||
             win.fullscreen);
 
+    const shadowStyleKey = hideShadowForMaximizedFullscreen
+        ? `hidden|${actorStyle}`
+        : `visible|${actorStyle}|${adjustedBorderRadius * scale}|${shadow.horizontalOffset}|${shadow.verticalOffset}|${shadow.blurOffset}|${shadow.spreadRadius}|${shadow.opacity}|${left}|${right}|${top}|${bottom}`;
+
+    if (
+        state?.lastShadowStyleKey === shadowStyleKey &&
+        child.style === state.lastShadowStyle
+    ) {
+        return;
+    }
+
     const newChildStyle = hideShadowForMaximizedFullscreen
         ? 'opacity: 0;'
         : `background: white;
@@ -289,7 +304,10 @@ export function updateShadowActorStyle(
     if (state && state.lastShadowStyle !== newChildStyle) {
         child.style = newChildStyle;
         state.lastShadowStyle = newChildStyle;
+        state.lastShadowStyleKey = shadowStyleKey;
         child.queue_redraw();
+    } else if (state) {
+        state.lastShadowStyleKey = shadowStyleKey;
     } else if (!state && child.style !== newChildStyle) {
         child.style = newChildStyle;
         child.queue_redraw();
