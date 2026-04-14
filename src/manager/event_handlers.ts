@@ -286,7 +286,10 @@ function refreshRoundedCorners(actor: RoundedWindowActor): void {
     const constraints = shadow.get_constraints();
     constraints.forEach((constraint, i) => {
         if (constraint instanceof Clutter.BindConstraint) {
-            constraint.offset = offsets[i];
+            const nextOffset = offsets[i];
+            if (constraint.offset !== nextOffset) {
+                constraint.offset = nextOffset;
+            }
         }
     });
 

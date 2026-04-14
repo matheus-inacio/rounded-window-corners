@@ -27,6 +27,19 @@ class Uniforms {
 export const RoundedCornersEffect = GObject.registerClass(
     {},
     class Effect extends Shell.GLSLEffect {
+        #lastBounds: number[] = [];
+        #lastRadius = Number.NaN;
+        #lastBorderWidth = Number.NaN;
+        #lastBorderColor: [number, number, number, number] = [
+            Number.NaN,
+            Number.NaN,
+            Number.NaN,
+            Number.NaN,
+        ];
+        #lastBorderedAreaBounds: number[] = [];
+        #lastBorderedAreaRadius = Number.NaN;
+        #lastPixelStep: number[] = [];
+
         /**
          * To store a uniform value, we need to know its location in the shader,
          * which is done by calling `this.get_uniform_location()`. This is
@@ -88,25 +101,30 @@ export const RoundedCornersEffect = GObject.registerClass(
                 bounds[3] - borderWidth,
             ];
 
-            let borderedAreaRadius = outerRadius - borderWidth;
-            if (borderedAreaRadius < 0.001) {
-                borderedAreaRadius = 0.0;
+            let borderedAreaRadius = Math.max(outerRadius - borderWidth, 0.0);
+
+            const actorWidth = this.actor.get_width();
+            const actorHeight = this.actor.get_height();
+            if (actorWidth <= 0 || actorHeight <= 0) {
+                return;
             }
 
-            const pixelStep = [
-                1 / this.actor.get_width(),
-                1 / this.actor.get_height(),
-            ];
+            const pixelStep = [1 / actorWidth, 1 / actorHeight];
 
             let radius = outerRadius * 2.0;
             const maxRadius = Math.min(
-                bounds[3] - bounds[0],
-                bounds[4] - bounds[1],
+                bounds[2] - bounds[0],
+                bounds[3] - bounds[1],
             );
             if (radius > maxRadius) {
                 radius = maxRadius;
             }
-            borderedAreaRadius *= radius / outerRadius;
+
+            if (outerRadius > 0) {
+                borderedAreaRadius *= radius / outerRadius;
+            } else {
+                borderedAreaRadius = 0;
+            }
 
             this.#setUniforms(
                 bounds,
@@ -128,6 +146,18 @@ export const RoundedCornersEffect = GObject.registerClass(
             borderedAreaRadius: number,
             pixelStep: number[],
         ) {
+            if (
+                this.#lastRadius === radius &&
+                this.#lastBorderWidth === borderWidth &&
+                this.#lastBorderedAreaRadius === borderedAreaRadius &&
+                arraysEqual(this.#lastBounds, bounds) &&
+                arraysEqual(this.#lastBorderColor, borderColor) &&
+                arraysEqual(this.#lastBorderedAreaBounds, borderedAreaBounds) &&
+                arraysEqual(this.#lastPixelStep, pixelStep)
+            ) {
+                return;
+            }
+
             const uniforms = Effect.uniforms;
             this.set_uniform_float(uniforms.bounds, 4, bounds);
             this.set_uniform_float(uniforms.clipRadius, 1, [radius]);
@@ -142,7 +172,34 @@ export const RoundedCornersEffect = GObject.registerClass(
                 borderedAreaRadius,
             ]);
             this.set_uniform_float(uniforms.pixelStep, 2, pixelStep);
+
+            this.#lastBounds = bounds;
+            this.#lastRadius = radius;
+            this.#lastBorderWidth = borderWidth;
+            this.#lastBorderColor = [...borderColor] as [
+                number,
+                number,
+                number,
+                number,
+            ];
+            this.#lastBorderedAreaBounds = borderedAreaBounds;
+            this.#lastBorderedAreaRadius = borderedAreaRadius;
+            this.#lastPixelStep = pixelStep;
             this.queue_repaint();
         }
     },
 );
+
+function arraysEqual(a: readonly number[], b: readonly number[]) {
+    if (a.length !== b.length) {
+        return false;
+    }
+
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}

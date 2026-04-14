@@ -262,7 +262,10 @@ export function updateShadowActorStyle(
 
     const scale = windowScaleFactor(win) / originalScale;
 
-    actor.style = `padding: ${SHADOW_PADDING * scale}px;`;
+    const actorStyle = `padding: ${SHADOW_PADDING * scale}px;`;
+    if (actor.style !== actorStyle) {
+        actor.style = actorStyle;
+    }
 
     const child = actor.firstChild as St.Bin;
 
