@@ -14,14 +14,14 @@ const [declarations, code] = readShader(
     'shader/rounded_corners.frag',
 );
 
-class Uniforms {
-    bounds = 0;
-    clipRadius = 0;
-    borderWidth = 0;
-    borderColor = 0;
-    borderedAreaBounds = 0;
-    borderedAreaClipRadius = 0;
-    pixelStep = 0;
+class UniformLocations {
+    bounds = -1;
+    clipRadius = -1;
+    borderWidth = -1;
+    borderColor = -1;
+    borderedAreaBounds = -1;
+    borderedAreaClipRadius = -1;
+    pixelStep = -1;
 }
 
 export const RoundedCornersEffect = GObject.registerClass(
@@ -51,23 +51,8 @@ export const RoundedCornersEffect = GObject.registerClass(
         ];
         #lastBorderedAreaRadius = Number.NaN;
         #lastPixelStep = [Number.NaN, Number.NaN];
-
-        /**
-         * To store a uniform value, we need to know its location in the shader,
-         * which is done by calling `this.get_uniform_location()`. This is
-         * expensive, so we cache the location of uniforms when the shader is
-         * created.
-         */
-        static uniforms: Uniforms = new Uniforms();
-
-        constructor() {
-            super();
-
-            for (const k in Effect.uniforms) {
-                Effect.uniforms[k as keyof Uniforms] =
-                    this.get_uniform_location(k);
-            }
-        }
+        #uniformLocations = new UniformLocations();
+        #uniformsCached = false;
 
         vfunc_build_pipeline() {
             this.add_glsl_snippet(
@@ -159,15 +144,19 @@ export const RoundedCornersEffect = GObject.registerClass(
                 this.#lastRadius === radius &&
                 this.#lastBorderWidth === borderWidth &&
                 this.#lastBorderedAreaRadius === borderedAreaRadius &&
-                arraysEqual(this.#lastBounds, bounds) &&
-                arraysEqual(this.#lastBorderColor, borderColor) &&
-                arraysEqual(this.#lastBorderedAreaBounds, borderedAreaBounds) &&
-                arraysEqual(this.#lastPixelStep, pixelStep)
+                float4Equal(this.#lastBounds, bounds) &&
+                float4Equal(this.#lastBorderColor, borderColor) &&
+                float4Equal(this.#lastBorderedAreaBounds, borderedAreaBounds) &&
+                float2Equal(this.#lastPixelStep, pixelStep)
             ) {
                 return;
             }
 
-            const uniforms = Effect.uniforms;
+            if (!this.#cacheUniformLocations()) {
+                return;
+            }
+
+            const uniforms = this.#uniformLocations;
             this.set_uniform_float(uniforms.bounds, 4, bounds);
             this.#clipRadius[0] = radius;
             this.#borderWidthUniform[0] = borderWidth;
@@ -210,19 +199,45 @@ export const RoundedCornersEffect = GObject.registerClass(
             this.#lastPixelStep[1] = pixelStep[1];
             this.queue_repaint();
         }
+
+        #cacheUniformLocations() {
+            if (this.#uniformsCached) {
+                return true;
+            }
+
+            const uniforms = this.#uniformLocations;
+            uniforms.bounds = this.get_uniform_location('bounds');
+            uniforms.clipRadius = this.get_uniform_location('clipRadius');
+            uniforms.borderWidth = this.get_uniform_location('borderWidth');
+            uniforms.borderColor = this.get_uniform_location('borderColor');
+            uniforms.borderedAreaBounds =
+                this.get_uniform_location('borderedAreaBounds');
+            uniforms.borderedAreaClipRadius = this.get_uniform_location(
+                'borderedAreaClipRadius',
+            );
+            uniforms.pixelStep = this.get_uniform_location('pixelStep');
+
+            const ready =
+                uniforms.bounds >= 0 &&
+                uniforms.clipRadius >= 0 &&
+                uniforms.borderWidth >= 0 &&
+                uniforms.borderColor >= 0 &&
+                uniforms.borderedAreaBounds >= 0 &&
+                uniforms.borderedAreaClipRadius >= 0 &&
+                uniforms.pixelStep >= 0;
+
+            if (ready) {
+                this.#uniformsCached = true;
+            }
+            return ready;
+        }
     },
 );
 
-function arraysEqual(a: readonly number[], b: readonly number[]) {
-    if (a.length !== b.length) {
-        return false;
-    }
+function float4Equal(a: readonly number[], b: readonly number[]) {
+    return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
+}
 
-    for (let i = 0; i < a.length; i++) {
-        if (a[i] !== b[i]) {
-            return false;
-        }
-    }
-
-    return true;
+function float2Equal(a: readonly number[], b: readonly number[]) {
+    return a[0] === b[0] && a[1] === b[1];
 }
