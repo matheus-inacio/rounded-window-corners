@@ -17,6 +17,7 @@ import {isPermanentlyIneligible} from './utils.js';
 const pendingEffectApplications = new WeakMap<Meta.WindowActor, number>();
 const pendingResizeUpdates = new WeakMap<RoundedWindowActor, number>();
 const pendingWmClassListeners = new WeakMap<Meta.Window, number>();
+const initializedActors = new WeakSet<RoundedWindowActor>();
 
 class GlobalSignalManager {
     private connections: { object: GObject.Object; id: number }[] = [];
@@ -214,6 +215,11 @@ function applyEffectTo(actor: RoundedWindowActor) {
         return;
     }
 
+    // Prevent double-initialization of signals
+    if (initializedActors.has(actor)) {
+        return;
+    }
+
     if (!actor.firstChild) {
         const signalId = actorSignals.connect(actor, actor, 'notify::first-child', () => {
             actorSignals.disconnect(actor, signalId);
@@ -233,6 +239,9 @@ function applyEffectTo(actor: RoundedWindowActor) {
         logDebug(`Skipping ${metaWindow.title} (Permanently Ineligible on Initialization)`);
         return; 
     }
+
+    // Flag as initialized before binding the massive signal list
+    initializedActors.add(actor);
 
     // Window resized.
     //
@@ -255,6 +264,8 @@ function applyEffectTo(actor: RoundedWindowActor) {
 }
 
 function removeEffectFrom(actor: RoundedWindowActor) {
+    initializedActors.delete(actor);
+
     // Intercept and destroy the background resize task so it doesn't 
     // accidentally resurrect the shadow after the window is closed.
     const resizeIdleId = pendingResizeUpdates.get(actor);
