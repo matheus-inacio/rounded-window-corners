@@ -39,6 +39,10 @@ export interface WindowEffectState {
 // Safely manages custom state tied to the window actor without mutating the actor itself
 export const windowStateMap = new WeakMap<RoundedWindowActor | Meta.WindowActor, WindowEffectState>();
 
+// Iterable set of actors currently managed by the extension.
+// WeakMap cannot be iterated, so we maintain a companion Set for onRestacked.
+const managedActors = new Set<RoundedWindowActor | Meta.WindowActor>();
+
 export function onAddEffect(actor: RoundedWindowActor) {
     logDebug(`Adding effect to ${actor?.metaWindow.title}`);
 
@@ -75,12 +79,13 @@ export function onAddEffect(actor: RoundedWindowActor) {
         propertyBindings.push(binding);
     }
 
-    // Store state in WeakMap
+    // Store state in WeakMap and track this actor for onRestacked
     windowStateMap.set(actor, {
         shadow,
         unminimizedTimeoutId: 0,
         propertyBindings,
     });
+    managedActors.add(actor);
 
     // Make sure the effect is applied correctly.
     refreshRoundedCorners(actor);
@@ -117,7 +122,8 @@ export function onRemoveEffect(actor: RoundedWindowActor): void {
     if (state.unminimizedTimeoutId) {
         GLib.source_remove(state.unminimizedTimeoutId);
     }
-    
+
+    managedActors.delete(actor);
     windowStateMap.delete(actor);
 }
 
@@ -159,7 +165,7 @@ export function onUnminimize(actor: RoundedWindowActor): void {
 }
 
 export function onRestacked(): void {
-    for (const actor of global.get_window_actors()) {
+    for (const actor of managedActors) {
         const state = windowStateMap.get(actor);
 
         if (!(actor.visible && state?.shadow)) {
