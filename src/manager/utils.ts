@@ -381,60 +381,190 @@ function roundedCornersAllowedForWindowState(
 /**
  * Get the type of the application asynchronously (LibHandy/LibAdwaita/Other).
  *
+ * Tries {@link detectAppTypeFromMapFiles} first (O(unique mapped files / batch)
+ * async round-trips), then falls back to {@link detectAppTypeFromMaps} (single
+ * bulk read) when map_files is inaccessible due to ptrace restrictions.
+ *
  * @param win - The window to get the type of.
  * @returns the type of the application.
  */
 async function getAppTypeAsync(win: Meta.Window): Promise<AppType> {
     const wmClass = win.get_wm_class_instance();
     if (wmClass && appTypeCache.has(wmClass)) {
+        logDebug(`AppType cache hit for "${wmClass}": ${appTypeCache.get(wmClass)}`);
         return appTypeCache.get(wmClass)!;
     }
 
-    return new Promise((resolve) => {
-        try {
-            const file = Gio.File.new_for_path(`/proc/${win.get_pid()}/maps`);
-            file.read_async(GLib.PRIORITY_DEFAULT, null, (_source, res) => {
-                try {
-                    const baseStream = file.read_finish(res);
-                    const dataStream = new Gio.DataInputStream({ base_stream: baseStream });
+    const pid = win.get_pid();
+    logDebug(`Detecting app type for "${wmClass}" (pid ${pid}) via map_files…`);
 
-                    const readNextLine = () => {
-                        dataStream.read_line_async(GLib.PRIORITY_DEFAULT, null, (_source, lineRes) => {
-                            try {
-                                const [lineBytes] = dataStream.read_line_finish_utf8(lineRes);
-                                
-                                if (lineBytes === null) {
-                                    dataStream.close(null);
-                                    if (wmClass) appTypeCache.set(wmClass, 'Other');
-                                    return resolve('Other');
-                                }
-                    
-                                if (lineBytes.includes('libadwaita-1.so')) {
-                                    dataStream.close(null);
-                                    if (wmClass) appTypeCache.set(wmClass, 'LibAdwaita');
-                                    return resolve('LibAdwaita');
-                                }
-                    
-                                if (lineBytes.includes('libhandy-1.so')) {
-                                    dataStream.close(null);
-                                    if (wmClass) appTypeCache.set(wmClass, 'LibHandy');
-                                    return resolve('LibHandy');
-                                }
-                    
-                                readNextLine();
-                            } catch {
-                                dataStream.close(null);
-                                resolve('Other');
-                            }
-                        });
-                    };
-                    readNextLine();
-                } catch {
-                    resolve('Other');
+    const appType = await detectAppTypeFromMapFiles(pid)
+        .catch((e) => {
+            logDebug(`map_files unavailable for pid ${pid} (${e}), falling back to /proc/maps`);
+            return detectAppTypeFromMaps(pid);
+        });
+
+    logDebug(`AppType resolved for "${wmClass}" (pid ${pid}): ${appType}`);
+    if (wmClass) appTypeCache.set(wmClass, appType);
+    return appType;
+}
+
+/**
+ * Detect the app type by enumerating /proc/<pid>/map_files/.
+ *
+ * Each entry in that directory is a symlink whose target is the path of a
+ * memory-mapped file (shared libraries, executables, etc.). Checking symlink
+ * targets avoids parsing the full text of /proc/<pid>/maps: there are far
+ * fewer unique mapped files than lines in the maps file, and we retrieve them
+ * in batches of 64 rather than one per async GLib main-loop round-trip.
+ *
+ * @throws if the directory cannot be enumerated (e.g. ptrace restrictions).
+ */
+function detectAppTypeFromMapFiles(pid: number): Promise<AppType> {
+    return new Promise((resolve, reject) => {
+        const dir = Gio.File.new_for_path(`/proc/${pid}/map_files`);
+        dir.enumerate_children_async(
+            'standard::symlink-target',
+            Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS,
+            GLib.PRIORITY_LOW,
+            null,
+            (_src, enumRes) => {
+                let enumerator: Gio.FileEnumerator;
+                try {
+                    enumerator = dir.enumerate_children_finish(enumRes);
+                } catch (e) {
+                    // Permission denied or map_files unavailable — let caller fall back.
+                    reject(e);
+                    return;
                 }
-            });
-        } catch {
-            resolve('Other');
-        }
+
+                let batchCount = 0;
+                const readBatch = () => {
+                    enumerator.next_files_async(64, GLib.PRIORITY_LOW, null, (_s, batchRes) => {
+                        try {
+                            const infos = enumerator.next_files_finish(batchRes);
+                            batchCount++;
+
+                            if (infos.length === 0) {
+                                // Exhausted all entries — no library match found.
+                                logDebug(`map_files[pid ${pid}]: scanned ${batchCount} batch(es), result=Other`);
+                                try { enumerator.close(null); } catch {}
+                                resolve('Other');
+                                return;
+                            }
+
+                            for (const info of infos) {
+                                const target = info.get_symlink_target() ?? '';
+                                if (target.includes('libadwaita-1.so')) {
+                                    logDebug(`map_files[pid ${pid}]: found libadwaita in batch ${batchCount} (${target})`);
+                                    try { enumerator.close(null); } catch {}
+                                    resolve('LibAdwaita');
+                                    return;
+                                }
+                                if (target.includes('libhandy-1.so')) {
+                                    logDebug(`map_files[pid ${pid}]: found libhandy in batch ${batchCount} (${target})`);
+                                    try { enumerator.close(null); } catch {}
+                                    resolve('LibHandy');
+                                    return;
+                                }
+                            }
+
+                            readBatch();
+                        } catch (e) {
+                            logDebug(`map_files[pid ${pid}]: error reading batch ${batchCount}: ${e}`);
+                            try { enumerator.close(null); } catch {}
+                            resolve('Other');
+                        }
+                    });
+                };
+
+                readBatch();
+            },
+        );
+    });
+}
+
+/**
+ * Fallback: read /proc/<pid>/maps in 16 KB chunks and search each chunk for
+ * the toolkit library names.
+ *
+ * This is strictly better than the two naive extremes:
+ *  - Old line-by-line: O(lines) async callbacks, O(1) memory  → huge GLib overhead
+ *  - Bulk load_contents_async: O(1) callbacks, O(file) memory → high memory pressure
+ *
+ * Chunked approach: O(file_size / 16KB) callbacks ≈ 5–10 for typical apps,
+ * and O(16KB) memory at any point in time.
+ *
+ * A (needle_length − 1) = 15-byte overlap is kept between adjacent chunks so
+ * that needles straddling a chunk boundary are never missed.
+ */
+function detectAppTypeFromMaps(pid: number): Promise<AppType> {
+    // Longest needle is 'libadwaita-1.so' (16 chars); overlap = 16 - 1 = 15.
+    const CHUNK_SIZE = 16 * 1024;
+    const OVERLAP    = 'libadwaita-1.so'.length - 1;
+
+    return new Promise((resolve) => {
+        logDebug(`maps[pid ${pid}]: opening /proc/${pid}/maps for chunked read`);
+        const file = Gio.File.new_for_path(`/proc/${pid}/maps`);
+
+        file.read_async(GLib.PRIORITY_LOW, null, (_src, openRes) => {
+            let stream: Gio.FileInputStream;
+            try {
+                stream = file.read_finish(openRes);
+            } catch (e) {
+                logDebug(`maps[pid ${pid}]: failed to open stream: ${e}`);
+                resolve('Other');
+                return;
+            }
+
+            const decoder = new TextDecoder();
+            let tail     = '';  // last OVERLAP chars of the previous chunk
+            let chunkNum = 0;
+
+            const readChunk = () => {
+                stream.read_bytes_async(CHUNK_SIZE, GLib.PRIORITY_LOW, null, (_s, chunkRes) => {
+                    try {
+                        const bytes = stream.read_bytes_finish(chunkRes);
+                        chunkNum++;
+
+                        if (bytes.get_size() === 0) {
+                            // EOF — no match found.
+                            logDebug(`maps[pid ${pid}]: scanned ${chunkNum - 1} chunk(s), result=Other`);
+                            try { stream.close(null); } catch {}
+                            resolve('Other');
+                            return;
+                        }
+
+                        // Prepend the tail of the previous chunk so we never miss a
+                        // needle that straddles a 16 KB boundary.
+                        const chunk      = decoder.decode(bytes.get_data() as unknown as Uint8Array);
+                        const searchText = tail + chunk;
+
+                        if (searchText.includes('libadwaita-1.so')) {
+                            logDebug(`maps[pid ${pid}]: found libadwaita-1.so in chunk ${chunkNum}`);
+                            try { stream.close(null); } catch {}
+                            resolve('LibAdwaita');
+                            return;
+                        }
+                        if (searchText.includes('libhandy-1.so')) {
+                            logDebug(`maps[pid ${pid}]: found libhandy-1.so in chunk ${chunkNum}`);
+                            try { stream.close(null); } catch {}
+                            resolve('LibHandy');
+                            return;
+                        }
+
+                        // Carry forward only the minimum overlap needed.
+                        tail = chunk.length >= OVERLAP ? chunk.slice(-OVERLAP) : chunk;
+                        readChunk();
+                    } catch (e) {
+                        logDebug(`maps[pid ${pid}]: error reading chunk ${chunkNum}: ${e}`);
+                        try { stream.close(null); } catch {}
+                        resolve('Other');
+                    }
+                });
+            };
+
+            readChunk();
+        });
     });
 }
