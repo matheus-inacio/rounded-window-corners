@@ -1,13 +1,11 @@
 <div align="center">
   <h1>Rounded Windows - Lite</h1>
   <p><i>An opinionated GNOME extension for lightweight, squircle-style window corners</i></p>
-  <p><b>Warning:</b> This extension is still in development.</p>
 </div>
 <br>
 
 > [!NOTE]
-> This project is a fork of the [original rounded-window-corners extension][14] by @yilozt.  
-> Rounded Windows - Lite focuses on a lean, straightforward implementation.
+> This project is a fork of [flexagoon/rounded-window-corners](https://github.com/flexagoon/rounded-window-corners). 
 
 ## Philosophy
 
