@@ -99,7 +99,7 @@ export function enableEffect() {
     globalSignals.connect(
         global.display,
         'window-created',
-            (_: Meta.Display, win: Meta.Window) => {
+        (_: Meta.Display, win: Meta.Window) => {
             const actor = win.get_compositor_private() as Meta.WindowActor;
 
             const scheduleApply = () => {
@@ -108,7 +108,7 @@ export function enableEffect() {
 
                 const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
                     pendingEffectApplications.delete(actor);
-                    
+
                     // Double-check inside the idle loop
                     if (!isAlive(actor)) return GLib.SOURCE_REMOVE;
                     
@@ -138,7 +138,7 @@ export function enableEffect() {
 
     globalSignals.connect(wm, 'destroy', (_: Shell.WM, actor: Meta.WindowActor) => {
         const win = actor.metaWindow;
-        
+
         // Clean up the wm-class listener if the window is destroyed before the class resolves
         if (win) {
             const notifyId = pendingWmClassListeners.get(win);
@@ -153,7 +153,6 @@ export function enableEffect() {
             GLib.source_remove(idleId);
             pendingEffectApplications.delete(actor);
         }
-        removeEffectFrom(actor as RoundedWindowActor);
     });
 
     globalSignals.connect(global.display, 'restacked', handlers.onRestacked);
@@ -183,10 +182,10 @@ function throttledResizeHandler(actor: RoundedWindowActor) {
     }
 
     if (pendingResizeUpdates.has(actor)) return;
-    
+
     const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
         pendingResizeUpdates.delete(actor);
-        
+
         // Prevent the callback from running if the actor was destroyed between 
         // the event firing and this idle frame executing.
         if (!isAlive(actor)) {
@@ -237,7 +236,7 @@ function applyEffectTo(actor: RoundedWindowActor) {
 
     if (isPermanentlyIneligible(metaWindow)) {
         logDebug(`Skipping ${metaWindow.title} (Permanently Ineligible on Initialization)`);
-        return; 
+        return;
     }
 
     // Flag as initialized before binding the massive signal list
@@ -259,6 +258,8 @@ function applyEffectTo(actor: RoundedWindowActor) {
     actorSignals.connect(actor, metaWindow, 'notify::appears-focused', () => handleFocusChanged(actor));
     // Workspace or monitor of the window changed.
     actorSignals.connect(actor, metaWindow, 'workspace-changed', () => handleFocusChanged(actor));
+
+    actorSignals.connect(actor, actor, 'destroy', () => removeEffectFrom(actor));
 
     handlers.onAddEffect(actor);
 }
