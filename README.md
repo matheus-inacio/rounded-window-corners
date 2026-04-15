@@ -1,5 +1,3 @@
-![2022-07-29 23-49-57][6]
-
 <div align="center">
   <h1>Rounded Windows - Lite</h1>
   <p><i>An opinionated GNOME extension for lightweight, squircle-style window corners</i></p>
@@ -15,7 +13,7 @@
 
 Rounded Windows - Lite is intentionally opinionated:
 
-- [Superelliptical][1] ("squircle") corner style inspired by Apple design language
+- Superelliptical ("squircle") corner style inspired by Apple design language
 - Performance optimizations to stay as lightweight as possible
 - Minimal surface area and fewer moving parts for easier long-term maintenance
 - No settings or customization UI; behavior is intentionally fixed and consistent
@@ -66,5 +64,4 @@ Available recipes:
     clean   # Delete the build directory
     install # Build and install the extension from source
     pack    # Build and pack the extension
-    pot     # Update and compile the translation files
 ```
