@@ -28,45 +28,15 @@ type ShadowStyleState = {
     lastShadowStyleKey?: string;
 };
 
-// Cache mutter settings to avoid creating a new Gio.Settings object on every
-// call to windowScaleFactor (which is called per-frame during overview animations).
-let mutterSettings: Gio.Settings | null = null;
-let fractionalScalingEnabled: boolean | null = null;
-
 // Cache to prevent repetitive I/O operations for 
 // the same app classes
 const appTypeCache = new Map<string, AppType>();
 
 /**
- * Check whether fractional scaling is enabled in the GNOME mutter settings.
- * The result is cached and invalidated when the `experimental-features` setting
- * changes.
- *
- * @returns Whether fractional scaling is currently enabled.
+ * Clear the cached application types.
+ * Should be called when the extension is disabled.
  */
-function isFractionalScalingEnabled(): boolean {
-    if (mutterSettings === null) {
-        mutterSettings = Gio.Settings.new('org.gnome.mutter');
-        mutterSettings.connect('changed::experimental-features', () => {
-            fractionalScalingEnabled = null;
-        });
-    }
-    if (fractionalScalingEnabled === null) {
-        const features = mutterSettings.get_strv('experimental-features');
-
-        fractionalScalingEnabled = features.includes('scale-monitor-framebuffer');
-    }
-    return fractionalScalingEnabled;
-}
-
-/**
- * Clear the cached mutter settings and fractional scaling state.
- * Should be called when the extension is disabled to release the
- * {@link Gio.Settings} object and its D-Bus signal subscription.
- */
-export function clearMutterSettingsCache() {
-    mutterSettings = null;
-    fractionalScalingEnabled = null;
+export function clearAppTypeCache() {
     appTypeCache.clear();
 }
 
@@ -139,9 +109,14 @@ export function getRoundedCornersEffect(
  * @returns The scaling factor of the window.
  */
 export function windowScaleFactor(win: Meta.Window) {
-    // When fractional scaling is enabled, always return 1.
-    // Use cached settings to avoid creating a new Gio.Settings object per call.
-    if (isFractionalScalingEnabled()) {
+    // In Wayland with fractional scaling, or when the stage is logical,
+    // St.ThemeContext.scaleFactor is 1. All stage coordinates are logical, so
+    // we don't need to scale shadows or borders per-monitor.
+    const originalScale = St.ThemeContext.get_for_stage(
+        global.stage as Clutter.Stage,
+    ).scaleFactor;
+
+    if (originalScale === 1) {
         return 1;
     }
 
