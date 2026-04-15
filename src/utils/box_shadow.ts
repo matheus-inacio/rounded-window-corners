@@ -10,13 +10,12 @@ import type {BoxShadow} from './types.js';
  * object.
  *
  * @param shadow - The settings for the box shadow.
- * @param scale - The scale of the window, 1 by default.
  * @returns The box-shadow CSS string.
  */
-export function boxShadowCss(shadow: BoxShadow, scale = 1) {
-    return `box-shadow: ${shadow.horizontalOffset * scale}px
-          ${shadow.verticalOffset * scale}px
-          ${shadow.blurOffset * scale}px
-          ${shadow.spreadRadius * scale}px
+export function boxShadowCss(shadow: BoxShadow) {
+    return `box-shadow: ${shadow.horizontalOffset}px
+          ${shadow.verticalOffset}px
+          ${shadow.blurOffset}px
+          ${shadow.spreadRadius}px
           rgba(0,0,0, ${shadow.opacity / 100})`;
 }

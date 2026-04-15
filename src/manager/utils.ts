@@ -102,28 +102,6 @@ export function getRoundedCornersEffect(
         : (actor.get_effect(name) as RoundedCornersEffectType);
 }
 
-/**
- * Get the scaling factor of a window.
- *
- * @param win - The window to get the scaling factor for.
- * @returns The scaling factor of the window.
- */
-export function windowScaleFactor(win: Meta.Window) {
-    // In Wayland with fractional scaling, or when the stage is logical,
-    // St.ThemeContext.scaleFactor is 1. All stage coordinates are logical, so
-    // we don't need to scale shadows or borders per-monitor.
-    const originalScale = St.ThemeContext.get_for_stage(
-        global.stage as Clutter.Stage,
-    ).scaleFactor;
-
-    if (originalScale === 1) {
-        return 1;
-    }
-
-    const monitorIndex = win.get_monitor();
-    return global.display.get_monitor_scale(monitorIndex);
-}
-
 /** Compute outer bounds for rounded corners of a window
  *
  * @param actor - The window actor to compute the bounds for.
@@ -160,12 +138,11 @@ export function computeBounds(
     // Apply adjustments if a matching application is found
     if (shadows) {
         const [x1, y1, x2, y2] = shadows;
-        const scale = windowScaleFactor(win);
         
-        bounds.x1 += x1 * scale;
-        bounds.y1 += y1 * scale;
-        bounds.x2 -= x2 * scale;
-        bounds.y2 -= y2 * scale;
+        bounds.x1 += x1;
+        bounds.y1 += y1;
+        bounds.x2 -= x2;
+        bounds.y2 -= y2;
     }
 
     return bounds;
@@ -197,7 +174,6 @@ export function computeWindowContentsOffset(
  * @param [offsetX, offsetY, offsetWidth, offsetHeight] - The content offsets of the window actor.
  */
 export function computeShadowActorOffset(
-    actor: Meta.WindowActor,
     [offsetX, offsetY, offsetWidth, offsetHeight]: [
         number,
         number,
@@ -205,14 +181,11 @@ export function computeShadowActorOffset(
         number,
     ],
 ): number[] {
-    const win = actor.metaWindow;
-    const shadowPadding = SHADOW_PADDING * windowScaleFactor(win);
-
     return [
-        offsetX - shadowPadding,
-        offsetY - shadowPadding,
-        2 * shadowPadding + offsetWidth,
-        2 * shadowPadding + offsetHeight,
+        offsetX - SHADOW_PADDING,
+        offsetY - SHADOW_PADDING,
+        2 * SHADOW_PADDING + offsetWidth,
+        2 * SHADOW_PADDING + offsetHeight,
     ];
 }
 
@@ -243,17 +216,7 @@ export function updateShadowActorStyle(
         adjustedBorderRadius *= 1.0 + globalCfg.smoothing;
     }
 
-    // If there are two monitors with different scale factors, the scale of
-    // the window may be different from the scale that has to be applied in
-    // the css, so we have to adjust the scale factor accordingly.
-
-    const originalScale = St.ThemeContext.get_for_stage(
-        global.stage as Clutter.Stage,
-    ).scaleFactor;
-
-    const scale = windowScaleFactor(win) / originalScale;
-
-    const actorStyle = `padding: ${SHADOW_PADDING * scale}px;`;
+    const actorStyle = `padding: ${SHADOW_PADDING}px;`;
     if (actor.style !== actorStyle) {
         actor.style = actorStyle;
     }
@@ -268,7 +231,7 @@ export function updateShadowActorStyle(
 
     const shadowStyleKey = hideShadowForMaximizedFullscreen
         ? `hidden|${actorStyle}`
-        : `visible|${actorStyle}|${adjustedBorderRadius * scale}|${shadow.horizontalOffset}|${shadow.verticalOffset}|${shadow.blurOffset}|${shadow.spreadRadius}|${shadow.opacity}|${left}|${right}|${top}|${bottom}`;
+        : `visible|${actorStyle}|${adjustedBorderRadius}|${shadow.horizontalOffset}|${shadow.verticalOffset}|${shadow.blurOffset}|${shadow.spreadRadius}|${shadow.opacity}|${left}|${right}|${top}|${bottom}`;
 
     if (
         state?.lastShadowStyleKey === shadowStyleKey &&
@@ -280,12 +243,9 @@ export function updateShadowActorStyle(
     const newChildStyle = hideShadowForMaximizedFullscreen
         ? 'opacity: 0;'
         : `background: white;
-           border-radius: ${adjustedBorderRadius * scale}px;
-           ${boxShadowCss(shadow, scale)};
-               margin: ${top * scale}px
-                       ${right * scale}px
-                       ${bottom * scale}px
-                       ${left * scale}px;`;
+           border-radius: ${adjustedBorderRadius}px;
+           ${boxShadowCss(shadow)};
+               margin: ${top}px ${right}px ${bottom}px ${left}px;`;
 
     // Only update style and queue a redraw when the style actually changed.
     if (state && state.lastShadowStyle !== newChildStyle) {

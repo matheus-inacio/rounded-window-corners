@@ -26,7 +26,6 @@ import {
     shouldEnableEffect,
     unwrapActor,
     updateShadowActorStyle,
-    windowScaleFactor,
 } from './utils.js';
 
 export interface WindowEffectState {
@@ -275,7 +274,6 @@ function refreshRoundedCorners(actor: RoundedWindowActor): void {
         !win.maximizedVertically &&
         !win.fullscreen;
     effect.updateUniforms(
-        windowScaleFactor(win),
         cfg,
         computeBounds(actor, windowContentOffset),
         showBorder,
@@ -283,7 +281,7 @@ function refreshRoundedCorners(actor: RoundedWindowActor): void {
 
     // Update BindConstraint for the shadow
     const shadow = state.shadow;
-    const offsets = computeShadowActorOffset(actor, windowContentOffset);
+    const offsets = computeShadowActorOffset(windowContentOffset);
     const constraints = shadow.get_constraints();
     constraints.forEach((constraint, i) => {
         if (constraint instanceof Clutter.BindConstraint) {

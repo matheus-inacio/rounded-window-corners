@@ -67,27 +67,25 @@ export const RoundedCornersEffect = GObject.registerClass(
          * Update uniforms of the shader.
          * For more information, see the comments in the shader file.
          *
-         * @param scaleFactor - Desktop scaling factor
          * @param config - Rounded corners configuration
          * @param windowBounds - Bounds of the window without padding
          * @param showBorder - Should draw borders
          */
         updateUniforms(
-            scaleFactor: number,
             config: RoundedCornerSettings,
             windowBounds: Bounds,
             showBorder: boolean,
         ) {
-            const borderWidth = showBorder ? BORDER_WIDTH * scaleFactor : 0;
+            const borderWidth = showBorder ? BORDER_WIDTH : 0;
             const borderColor = config.borderColor;
 
-            const outerRadius = config.borderRadius * scaleFactor;
+            const outerRadius = config.borderRadius;
             const {padding} = config;
 
-            this.#bounds[0] = windowBounds.x1 + padding.left * scaleFactor;
-            this.#bounds[1] = windowBounds.y1 + padding.top * scaleFactor;
-            this.#bounds[2] = windowBounds.x2 - padding.right * scaleFactor;
-            this.#bounds[3] = windowBounds.y2 - padding.bottom * scaleFactor;
+            this.#bounds[0] = windowBounds.x1 + padding.left;
+            this.#bounds[1] = windowBounds.y1 + padding.top;
+            this.#bounds[2] = windowBounds.x2 - padding.right;
+            this.#bounds[3] = windowBounds.y2 - padding.bottom;
 
             this.#borderedAreaBounds[0] = this.#bounds[0] + borderWidth;
             this.#borderedAreaBounds[1] = this.#bounds[1] + borderWidth;
