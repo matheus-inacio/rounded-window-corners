@@ -1,43 +1,37 @@
 ![2022-07-29 23-49-57][6]
 
 <div align="center">
-  <h1>Rounded Window Corners Reborn</h1>
-  <p><i>A GNOME extension that adds rounded corners to all windows</i></p>
-  <a href="https://extensions.gnome.org/extension/7048/rounded-window-corners-reborn">
-    <img src="https://img.shields.io/badge/Install%20from-extensions.gnome.org-4A86CF?style=for-the-badge&logo=Gnome&logoColor=white"/>
-  </a>
+  <h1>Rounded Windows - Lite</h1>
+  <p><i>An opinionated GNOME extension for lightweight, squircle-style window corners</i></p>
+  <p><b>Warning:</b> This extension is still in development.</p>
 </div>
 <br>
 
 > [!NOTE]
-> This is the fork of the [original rounded-window-corners extension][14] by @yilozt, which is no longer maintained.
+> This project is a fork of the [original rounded-window-corners extension][14] by @yilozt.  
+> Rounded Windows - Lite focuses on a lean, straightforward implementation.
 
-## Features
+## Philosophy
 
-- Works with Gnome 46+
-- Custom border radius and clip paddings for windows
-- Blocklist for applications that draw their own window decorations
-- Custom shadow for windows with rounded corners
-- Option to skip libadwaita / libhandy application
-- [Superelliptical][1] shape for rounded corners, thanks to [@YuraIz][2]
-- A simple reset preferences dialog
+Rounded Windows - Lite is intentionally opinionated:
+
+- [Superelliptical][1] ("squircle") corner style inspired by Apple design language
+- Performance optimizations to stay as lightweight as possible
+- Minimal surface area and fewer moving parts for easier long-term maintenance
+- No settings or customization UI; behavior is intentionally fixed and consistent
+
+## Why this fork exists
+
+The original extension interacts with many GNOME Shell private APIs. That makes maintenance harder over time, especially across GNOME updates.
+
+This fork aims to stay lean and straightforward by reducing complexity and avoiding extra configuration features.
 
 ## Installation
 
 ### From Gnome Extensions
 
-The extension is available on [extensions.gnome.org](https://extensions.gnome.org). You can install it directly [from here](https://extensions.gnome.org/extension/7048/rounded-window-corners-reborn/), or from the Extension Manager app.
-
-### From pre-built archives
-
-If you want to install the latest commit of the extension, you can get a
-pre-built archive from GitHub Actions.
-
-1. Sign in to GitHub.
-2. Go to [the build action page](https://github.com/flexagoon/rounded-window-corners/actions/workflows/build.yml)
-3. Click on the latest workflow run
-4. Download the extension from the "artifacts" section at the bottom
-5. Install it with the `gnome-extensions install` command
+> [!WARNING]
+> This extension is still in development and is not published on extensions.gnome.org.
 
 ### From source code
 
@@ -53,7 +47,7 @@ pre-built archive from GitHub Actions.
 2. Build the extension
 
     ```bash
-    git clone https://github.com/flexagoon/rounded-window-corners
+    git clone https://github.com/matheus-inacio/rounded-window-corners
     cd rounded-window-corners
     just install
     ```
@@ -61,29 +55,6 @@ pre-built archive from GitHub Actions.
 After this, the extension will be installed to
 `~/.local/share/gnome-shell/extensions`.
 
-### From unofficial AUR packages on Arch Linux
-
-If you use Arch, by the way, you can also install from the provided [AUR](https://aur.archlinux.org/) packages using [paru](https://github.com/Morganamilo/paru) or [yay](https://github.com/Jguer/yay). Two packages are available:
-
-- [gnome-shell-extension-rounded-window-corners-reborn](https://aur.archlinux.org/packages/gnome-shell-extension-rounded-window-corners-reborn) uses the pre-build archives
-- [gnome-shell-extension-rounded-window-corners-reborn-git](https://aur.archlinux.org/packages/gnome-shell-extension-rounded-window-corners-reborn-git) builds on your machine
-
-Installation:
-
-```zsh
-paru gnome-shell-extension-rounded-window-corners-reborn
-```
-
-Note these packages are not official.
-
-## Translation
-
-You can help with the translation of the extension by submitting translations
-on [Weblate](https://hosted.weblate.org/engage/rounded-window-corners-reborn)
-
-[![Translation status](https://hosted.weblate.org/widget/rounded-window-corners-reborn/multi-auto.svg)](https://hosted.weblate.org/engage/rounded-window-corners-reborn/)
-
-You can also manually edit .po files and submit a PR if you know how to do that.
 
 ## Development
 
@@ -97,23 +68,3 @@ Available recipes:
     pack    # Build and pack the extension
     pot     # Update and compile the translation files
 ```
-
-## Credits
-
-Thanks to [yotamguttman](https://github.com/yotamguttman) for making an icon for the extension!
-
-<!-- links -->
-
-[1]: https://en.wikipedia.org/wiki/Superellipse
-[2]: https://github.com/YuraIz
-[3]: https://extensions.gnome.org/extension/3740/compiz-alike-magic-lamp-effect/
-[4]: https://gitlab.gnome.org/GNOME/mutter/-/blob/main/src/compositor/meta-background-content.c#L138
-[6]: https://user-images.githubusercontent.com/32430186/181902857-d4d10740-82fe-4941-b064-d436b9ea7317.png
-[7]: https://extensions.gnome.org/extension/5237/rounded-window-corners/
-[8]: https://github.com/yilozt/rounded-window-corners/releases
-[9]: https://github.com/yilozt/rounded-window-corners/actions/workflows/pack.yml
-[10]: https://img.shields.io/github/v/release/yilozt/rounded-window-corners?style=flat-square
-[11]: https://img.shields.io/github/actions/workflow/status/yilozt/rounded-window-corners/pack.yml?branch=main&style=flat-square
-[12]: https://hosted.weblate.org/widgets/rounded-window-corners/-/rounded-window-corners/multi-auto.svg
-[13]: https://hosted.weblate.org/engage/rounded-window-corners/
-[14]: https://github.com/yilozt/rounded-window-corners

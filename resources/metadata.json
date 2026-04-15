@@ -1,8 +1,8 @@
 {
-    "name": "Rounded Window Corners Reborn",
-    "description": "Add rounded corners to all windows. Fork of the now unmaintained Rounded Window Corners extension.",
+    "name": "Rounded Windows - Lite",
+    "description": "An opinionated GNOME extension for lightweight, squircle-style window corners.",
     "uuid": "rounded-window-corners@fxgn",
-    "url": "https://github.com/flexagoon/rounded-window-corners",
-    "gettext-domain": "rounded-window-corners@fxgn",
+    "url": "https://github.com/matheus-inacio/rounded-window-corners",
+    "gettext-domain": "rounded-windows-lite@matheus-inacio.com",
     "shell-version": ["50"]
 }
