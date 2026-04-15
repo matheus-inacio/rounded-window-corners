@@ -297,6 +297,4 @@ function refreshRoundedCorners(actor: RoundedWindowActor): void {
             }
         }
     });
-
-    refreshShadow(actor);
 }
