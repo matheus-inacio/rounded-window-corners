@@ -18,10 +18,9 @@ import {
     KEEP_SHADOW_FOR_MAXIMIZED_FULLSCREEN,
     SKIP_LIBADWAITA_APP,
     SKIP_LIBHANDY_APP,
-    TWEAK_KITTY_TERMINAL,
     WHITELIST_MODE,
 } from '../utils/config.js';
-import {APP_SHADOWS, ROUNDED_CORNERS_EFFECT, SHADOW_PADDING,} from '../utils/constants.js';
+import {ROUNDED_CORNERS_EFFECT, SHADOW_PADDING,} from '../utils/constants.js';
 import {logDebug} from '../utils/log.js';
 
 type ShadowStyleState = {
@@ -166,15 +165,28 @@ export function computeBounds(
         y2: y + actor.height + height,
     };
 
-    // Kitty draws its window decoration by itself, so we need to manually
-    // clip its shadow and recompute the outer bounds for it.
-    if (
-        TWEAK_KITTY_TERMINAL &&
-        actor.metaWindow.get_client_type() === Meta.WindowClientType.WAYLAND &&
-        actor.metaWindow.get_wm_class_instance() === 'kitty'
-    ) {
-        const [x1, y1, x2, y2] = APP_SHADOWS.kitty;
-        const scale = windowScaleFactor(actor.metaWindow);
+    const win = actor.metaWindow;
+
+    // Only Wayland clients with custom decorations 
+    // need manual shadow clipping
+    if (win.get_client_type() !== Meta.WindowClientType.WAYLAND) {
+        return bounds;
+    }
+
+    const wmClass = win.get_wm_class_instance()?.toLowerCase() ?? '';
+    let shadows: number[] | undefined;
+
+    if (wmClass === 'kitty') {
+        shadows = [11, 35, 11, 11];
+    } else if (wmClass.startsWith('jetbrains-')) {
+        shadows = [18, 18, 18, 18];
+    }
+
+    // Apply adjustments if a matching application is found
+    if (shadows) {
+        const [x1, y1, x2, y2] = shadows;
+        const scale = windowScaleFactor(win);
+        
         bounds.x1 += x1 * scale;
         bounds.y1 += y1 * scale;
         bounds.x2 -= x2 * scale;

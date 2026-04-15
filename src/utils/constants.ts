@@ -8,11 +8,3 @@ export const CLIP_SHADOW_EFFECT = 'Clip Shadow Effect';
 
 /** Padding of shadow actors */
 export const SHADOW_PADDING = 80;
-
-/**
- * Hardcoded shadow size for certain applications that have to be
- * manually clipped
- */
-export const APP_SHADOWS = {
-    kitty: [11, 35, 11, 11],
-};

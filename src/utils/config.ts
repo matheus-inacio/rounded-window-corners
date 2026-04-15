@@ -53,4 +53,3 @@ export const SKIP_LIBHANDY_APP = false;
 export const BORDER_WIDTH = 1;
 export const KEEP_SHADOW_FOR_MAXIMIZED_FULLSCREEN = false;
 export const DEBUG_MODE = false;
-export const TWEAK_KITTY_TERMINAL = false;
