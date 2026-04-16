@@ -1,7 +1,7 @@
 {
     "name": "Rounded Windows - Lite",
     "description": "An opinionated GNOME extension for lightweight, squircle-style window corners.",
-    "uuid": "rounded-window-corners@fxgn",
+    "uuid": "rounded-windows-lite@matheus-inacio",
     "url": "https://github.com/matheus-inacio/rounded-window-corners",
     "gettext-domain": "rounded-windows-lite@matheus-inacio.com",
     "shell-version": ["50"]
