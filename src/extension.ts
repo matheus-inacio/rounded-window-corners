@@ -5,7 +5,7 @@ import {
 import {layoutManager} from 'resource:///org/gnome/shell/ui/main.js';
 
 import {disableEffect, enableEffect} from './manager/event_manager.js';
-import {clearAppTypeCache} from './manager/utils.js';
+import {clearAppTypeCache} from './manager/eligibility.js';
 import {logDebug} from './utils/log.js';
 
 export default class RoundedWindowCornersReborn extends Extension {

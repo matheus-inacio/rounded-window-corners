@@ -1,10 +1,18 @@
 /**
- * @file Contains the implementation of handlers for various events that need
- * to be processed by the extension. Those handlers are bound to event signals
- * in effect_manager.ts.
+ * @file Implements the event handler callbacks that are wired to GNOME Shell
+ * signals by {@link event_manager.ts}.
+ *
+ * This file intentionally owns only handler *orchestration* — the decision of
+ * what to do when a specific event fires.  Heavy lifting is delegated to the
+ * focused modules:
+ *
+ *  - {@link actor_helpers.ts} — stateless actor/effect lookups
+ *  - {@link geometry.ts}      — bounds and offset maths
+ *  - {@link eligibility.ts}   — window eligibility checks
+ *  - {@link shadow.ts}        — shadow actor lifecycle
+ *  - {@link window_state.ts}  — shared runtime state
  */
 
-import type Meta from 'gi://Meta';
 import type {RoundedWindowActor} from '../utils/types.js';
 
 import Clutter from 'gi://Clutter';
@@ -12,38 +20,28 @@ import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 
-import {ClipShadowEffect} from '../effect/clip_shadow_effect.js';
 import {RoundedCornersEffect} from '../effect/rounded_corners_effect.js';
-import {FOCUSED_SHADOW, UNFOCUSED_SHADOW} from '../utils/config.js';
-import {CLIP_SHADOW_EFFECT, ROUNDED_CORNERS_EFFECT,} from '../utils/constants.js';
+import {ROUNDED_CORNERS_EFFECT} from '../utils/constants.js';
 import {logDebug} from '../utils/log.js';
+import {
+    getRoundedCornersCfg,
+    getRoundedCornersEffect,
+    unwrapActor,
+} from './actor_helpers.js';
+import {shouldEnableEffect} from './eligibility.js';
 import {
     computeBounds,
     computeShadowActorOffset,
     computeWindowContentsOffset,
-    getRoundedCornersCfg,
-    getRoundedCornersEffect,
-    shouldEnableEffect,
-    unwrapActor,
-    updateShadowActorStyle,
-} from './utils.js';
+} from './geometry.js';
+import {createShadow, refreshShadow} from './shadow.js';
+import {managedActors, windowStateMap} from './window_state.js';
 
-export interface WindowEffectState {
-    shadow: St.Bin;
-    unminimizedTimeoutId: number;
-    propertyBindings: GObject.Binding[];
-    lastShadowStyle?: string;
-    lastShadowStyleKey?: string;
-}
+// ---------------------------------------------------------------------------
+// Public event handlers
+// ---------------------------------------------------------------------------
 
-// Safely manages custom state tied to the window actor without mutating the actor itself
-export const windowStateMap = new WeakMap<RoundedWindowActor | Meta.WindowActor, WindowEffectState>();
-
-// Iterable set of actors currently managed by the extension.
-// WeakMap cannot be iterated, so we maintain a companion Set for onRestacked.
-const managedActors = new Set<RoundedWindowActor | Meta.WindowActor>();
-
-export function onAddEffect(actor: RoundedWindowActor) {
+export function onAddEffect(actor: RoundedWindowActor): void {
     logDebug(`Adding effect to ${actor?.metaWindow.title}`);
 
     const win = actor.metaWindow;
@@ -60,7 +58,8 @@ export function onAddEffect(actor: RoundedWindowActor) {
 
     const shadow = createShadow(actor);
 
-    // Bind properties of the window to the shadow actor.
+    // Bind transform properties of the window to the shadow actor so it
+    // follows animations (minimize, workspace switch, etc.).
     const propertyBindings: GObject.Binding[] = [];
     for (const prop of [
         'pivot-point',
@@ -79,7 +78,7 @@ export function onAddEffect(actor: RoundedWindowActor) {
         propertyBindings.push(binding);
     }
 
-    // Store state in WeakMap and track this actor for onRestacked
+    // Overwrite the provisional state written by createShadow with the full state.
     windowStateMap.set(actor, {
         shadow,
         unminimizedTimeoutId: 0,
@@ -87,7 +86,6 @@ export function onAddEffect(actor: RoundedWindowActor) {
     });
     managedActors.add(actor);
 
-    // Make sure the effect is applied correctly.
     refreshRoundedCorners(actor);
 }
 
@@ -104,19 +102,33 @@ export function onRemoveEffect(actor: RoundedWindowActor): void {
         return;
     }
 
+    // Unbind all property bindings (including `visible`) immediately so the
+    // shadow stops following the window actor's animation state.
     for (const binding of state.propertyBindings) {
         binding.unbind();
     }
 
-    // Remove shadow actor
     const shadow = state.shadow;
     if (shadow) {
+        // Remove constraints so the shadow is no longer driven by the actor.
         shadow.get_constraints().forEach(constraint => {
             shadow.remove_constraint(constraint);
         });
-        global.windowGroup.remove_child(shadow);
-        shadow.clear_effects();
-        shadow.destroy();
+
+        // Hide immediately so it is not visible during the close animation.
+        shadow.visible = false;
+
+        // Defer the actual destruction to the next idle frame.  The window-close
+        // animation (≈300 ms) keeps a reference to the window actor and can
+        // trigger paint/timeline callbacks on still-connected children.  Destroying
+        // the shadow synchronously causes:
+        //   • "Timelines with detached actors" — St.Bin removed while animated
+        //   • "cogl_framebuffer_set_viewport: width > 0 && height > 0" — FBO
+        //     allocated for a zero-size actor during the closing shrink.
+        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            destroyShadow(shadow);
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     if (state.unminimizedTimeoutId) {
@@ -127,14 +139,34 @@ export function onRemoveEffect(actor: RoundedWindowActor): void {
     windowStateMap.delete(actor);
 }
 
+/**
+ * Safely tear down a detached shadow actor.
+ *
+ * Called from an idle handler so any in-flight Clutter animations on the
+ * closing window have already finished their current frame before we destroy
+ * the `St.Bin` hierarchy.
+ */
+function destroyShadow(shadow: St.Bin): void {
+    type DestroyCheck = {is_destroyed?: () => boolean};
+    if ((shadow as unknown as DestroyCheck).is_destroyed?.()) {
+        return;
+    }
+    try {
+        global.windowGroup.remove_child(shadow);
+    } catch (_) {
+        // Already removed (e.g. extension disabled mid-flight).
+    }
+    shadow.clear_effects();
+    shadow.destroy();
+}
+
 export function onMinimize(actor: RoundedWindowActor): void {
-    // Compatibility with "Compiz alike magic lamp effect".
-    // When minimizing a window, disable the shadow to make the magic lamp effect
-    // work.
+    // Compatibility with "Compiz alike magic lamp effect":
+    // Disable the shadow during the minimize animation so the lamp effect works.
     const magicLampEffect = actor.get_effect('minimize-magic-lamp-effect');
     const state = windowStateMap.get(actor);
     const roundedCornersEffect = getRoundedCornersEffect(actor);
-    
+
     if (magicLampEffect && state?.shadow && roundedCornersEffect) {
         state.shadow.visible = false;
         roundedCornersEffect.enabled = false;
@@ -142,19 +174,18 @@ export function onMinimize(actor: RoundedWindowActor): void {
 }
 
 export function onUnminimize(actor: RoundedWindowActor): void {
-    // Compatibility with "Compiz alike magic lamp effect".
-    // When unminimizing a window, wait until the effect is completed before
-    // showing the shadow.
+    // Compatibility with "Compiz alike magic lamp effect":
+    // Wait until the unminimize animation is 98% done before re-showing the shadow.
     const magicLampEffect = actor.get_effect('unminimize-magic-lamp-effect');
     const state = windowStateMap.get(actor);
     const roundedCornersEffect = getRoundedCornersEffect(actor);
+
     if (magicLampEffect && state?.shadow && roundedCornersEffect) {
         state.shadow.visible = false;
         type Effect = Clutter.Effect & {timerId: Clutter.Timeline};
         const timer = (magicLampEffect as Effect).timerId;
 
         const id = timer.connect('new-frame', source => {
-            // Wait until the effect is 98% completed
             if (source.get_progress() > 0.98) {
                 state.shadow.visible = true;
                 roundedCornersEffect.enabled = true;
@@ -173,79 +204,24 @@ export function onRestacked(): void {
         }
 
         if (actor.get_previous_sibling() !== state.shadow) {
-            global.windowGroup.set_child_below_sibling(state.shadow, actor);
+            global.windowGroup.set_child_below_sibling(
+                state.shadow,
+                actor,
+            );
         }
     }
 }
 
+/** Alias so event_manager.ts can use a descriptive name. */
 export const onSizeChanged = refreshRoundedCorners;
 
-export const onFocusChanged = refreshShadow;
+/** Alias so event_manager.ts can use a descriptive name. */
+export {refreshShadow as onFocusChanged};
 
 /**
- * Create the shadow actor for a window.
- *
- * @param actor - The window actor to create the shadow actor for.
- */
-function createShadow(actor: Meta.WindowActor): St.Bin {
-    const shadow = new St.Bin({
-        name: 'Shadow Actor',
-        child: new St.Bin({
-            xExpand: true,
-            yExpand: true,
-        }),
-    });
-    (shadow.firstChild as St.Bin).add_style_class_name('shadow');
-
-    // Attach to map early so refreshShadow can access it
-    windowStateMap.set(actor, { shadow, unminimizedTimeoutId: 0, propertyBindings: [] });
-    refreshShadow(actor as RoundedWindowActor);
-
-    // We have to clip the shadow because of this issue:
-    // https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/4474
-    shadow.add_effect_with_name(CLIP_SHADOW_EFFECT, new ClipShadowEffect());
-
-    // Draw the shadow actor below the window actor.
-    global.windowGroup.insert_child_below(shadow, actor);
-
-    // Bind position and size between window and shadow
-    for (let i = 0; i < 4; i++) {
-        const constraint = new Clutter.BindConstraint({
-            source: actor,
-            coordinate: i,
-            offset: 0,
-        });
-        shadow.add_constraint(constraint);
-    }
-
-    return shadow;
-}
-
-/**
- * Refresh the shadow actor for a window.
- *
- * @param actor - The window actor to refresh the shadow for.
- */
-function refreshShadow(actor: RoundedWindowActor) {
-    const win = actor.metaWindow;
-    const state = windowStateMap.get(actor);
-    if (!state?.shadow) {
-        return;
-    }
-
-    const shadowSettings = win.appears_focused
-        ? FOCUSED_SHADOW
-        : UNFOCUSED_SHADOW;
-
-    const {borderRadius, padding} = getRoundedCornersCfg(win);
-
-    updateShadowActorStyle(win, state.shadow, borderRadius, shadowSettings, padding, state);
-}
-
-/**
- * Refresh rounded corners state and settings for a window.
- *
- * @param actor - The window actor to refresh the rounded corners settings for.
+ * Re-evaluate whether the effect should be active for `actor` and update the
+ * shader uniforms and shadow `BindConstraint` offsets to match the current
+ * window geometry.
  */
 function refreshRoundedCorners(actor: RoundedWindowActor): void {
     const win = actor.metaWindow;
@@ -258,7 +234,6 @@ function refreshRoundedCorners(actor: RoundedWindowActor): void {
     const shouldHaveEffect = shouldEnableEffect(win);
 
     if (!hasEffect) {
-        // onAddEffect already skips windows that shouldn't have rounded corners.
         onAddEffect(actor);
         return;
     }
@@ -272,24 +247,23 @@ function refreshRoundedCorners(actor: RoundedWindowActor): void {
         effect.enabled = true;
     }
 
-    // When window size is changed, update uniforms for corner rounding shader.
     const cfg = getRoundedCornersCfg(win);
     const windowContentOffset = computeWindowContentsOffset(win);
     const showBorder =
         !win.maximizedHorizontally &&
         !win.maximizedVertically &&
         !win.fullscreen;
+
     effect.updateUniforms(
         cfg,
         computeBounds(actor, windowContentOffset),
         showBorder,
     );
 
-    // Update BindConstraint for the shadow
+    // Update BindConstraint offsets so the shadow tracks the new window geometry.
     const shadow = state.shadow;
     const offsets = computeShadowActorOffset(windowContentOffset);
-    const constraints = shadow.get_constraints();
-    constraints.forEach((constraint, i) => {
+    shadow.get_constraints().forEach((constraint, i) => {
         if (constraint instanceof Clutter.BindConstraint) {
             const nextOffset = offsets[i];
             if (constraint.offset !== nextOffset) {

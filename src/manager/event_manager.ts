@@ -12,7 +12,7 @@ import GLib from 'gi://GLib';
 
 import {logDebug} from '../utils/log.js';
 import * as handlers from './event_handlers.js';
-import {isPermanentlyIneligible} from './utils.js';
+import {isPermanentlyIneligible} from './eligibility.js';
 
 const pendingEffectApplications = new WeakMap<Meta.WindowActor, number>();
 const pendingResizeUpdates = new WeakMap<RoundedWindowActor, number>();
