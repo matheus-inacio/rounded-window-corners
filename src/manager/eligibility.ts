@@ -15,12 +15,10 @@ import Gio from 'gi://Gio';
 
 import {
     BLACKLIST,
-    SKIP_LIBADWAITA_APP,
-    SKIP_LIBHANDY_APP,
+    GLOBAL_ROUNDED_CORNER_SETTINGS,
     WHITELIST_MODE,
 } from '../utils/config.js';
 import {logDebug} from '../utils/log.js';
-import {getRoundedCornersCfg} from './actor_helpers.js';
 
 /** The toolkit type of a running application. */
 export type AppType = 'LibAdwaita' | 'LibHandy' | 'Other';
@@ -139,8 +137,7 @@ export function shouldEnableEffect(
 
     logDebug(`Check Type of window:${win.title} => ${win._appType}`);
 
-    const cfg = getRoundedCornersCfg(win);
-    return _roundedCornersAllowedForWindowState(win, cfg);
+    return _roundedCornersAllowedForWindowState(win);
 }
 
 // ---------------------------------------------------------------------------
@@ -156,11 +153,11 @@ function _skipForLibToolkit(appType: AppType, isException: boolean): boolean {
 }
 
 function _roundedCornersAllowedForWindowState(
-    win: Meta.Window,
-    cfg: ReturnType<typeof getRoundedCornersCfg>,
+    win: Meta.Window
 ): boolean {
     const maximized = win.maximizedHorizontally || win.maximizedVertically;
     const fullscreen = win.fullscreen;
+    const cfg = GLOBAL_ROUNDED_CORNER_SETTINGS;
     return (
         !(maximized || fullscreen) ||
         (maximized && !fullscreen && cfg.keepRoundedCorners.maximized) ||

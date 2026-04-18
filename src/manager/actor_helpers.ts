@@ -8,14 +8,8 @@
 
 import type Clutter from 'gi://Clutter';
 import type {RoundedCornersEffect} from '../effect/rounded_corners_effect.js';
-import type {RoundedCornerSettings} from '../utils/types.js';
 
 import Meta from 'gi://Meta';
-
-import {
-    CUSTOM_ROUNDED_CORNER_SETTINGS,
-    GLOBAL_ROUNDED_CORNER_SETTINGS,
-} from '../utils/config.js';
 import {ROUNDED_CORNERS_EFFECT} from '../utils/constants.js';
 
 // Weird TypeScript magic :)
@@ -59,29 +53,4 @@ export function getRoundedCornersEffect(
     return win.get_client_type() === Meta.WindowClientType.X11
         ? (actor.firstChild.get_effect(name) as RoundedCornersEffectType)
         : (actor.get_effect(name) as RoundedCornersEffectType);
-}
-
-/**
- * Return the correct rounded-corner settings for a window.
- *
- * If the window has a custom per-`wm_class_instance` override that is
- * explicitly enabled, that override is returned; otherwise the global
- * defaults are used.
- *
- * @param win - The window to look up settings for.
- */
-export function getRoundedCornersCfg(win: Meta.Window): RoundedCornerSettings {
-    const globalCfg = GLOBAL_ROUNDED_CORNER_SETTINGS;
-    const customCfgList = CUSTOM_ROUNDED_CORNER_SETTINGS;
-
-    const wmClass = win.get_wm_class_instance();
-    if (
-        wmClass == null ||
-        !customCfgList[wmClass] ||
-        !customCfgList[wmClass].enabled
-    ) {
-        return globalCfg;
-    }
-
-    return customCfgList[wmClass];
 }

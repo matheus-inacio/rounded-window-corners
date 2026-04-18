@@ -4,7 +4,6 @@
 
 import type {
     BoxShadow,
-    CustomRoundedCornerSettings,
     RoundedCornerSettings,
 } from './types.js';
 
@@ -26,9 +25,6 @@ export const GLOBAL_ROUNDED_CORNER_SETTINGS: RoundedCornerSettings = {
     enabled: true,
 };
 
-/** Former `custom-rounded-corner-settings` default. */
-export const CUSTOM_ROUNDED_CORNER_SETTINGS: CustomRoundedCornerSettings = {};
-
 export const FOCUSED_SHADOW: BoxShadow = {
     horizontalOffset: 0,
     verticalOffset: 4,
@@ -49,5 +45,4 @@ export const BLACKLIST: string[] = [];
 /** When false, blacklist entries are excluded from rounding. */
 export const WHITELIST_MODE = false;
 export const BORDER_WIDTH = 1;
-export const KEEP_SHADOW_FOR_MAXIMIZED_FULLSCREEN = false;
 export const DEBUG_MODE = false;

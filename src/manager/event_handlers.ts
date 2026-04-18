@@ -24,7 +24,6 @@ import {RoundedCornersEffect} from '../effect/rounded_corners_effect.js';
 import {ROUNDED_CORNERS_EFFECT} from '../utils/constants.js';
 import {logDebug} from '../utils/log.js';
 import {
-    getRoundedCornersCfg,
     getRoundedCornersEffect,
     unwrapActor,
 } from './actor_helpers.js';
@@ -36,6 +35,7 @@ import {
 } from './geometry.js';
 import {createShadow, refreshShadow} from './shadow.js';
 import {managedActors, windowStateMap} from './window_state.js';
+import { GLOBAL_ROUNDED_CORNER_SETTINGS } from '../utils/config.js';
 
 // ---------------------------------------------------------------------------
 // Public event handlers
@@ -247,7 +247,6 @@ function refreshRoundedCorners(actor: RoundedWindowActor): void {
         effect.enabled = true;
     }
 
-    const cfg = getRoundedCornersCfg(win);
     const windowContentOffset = computeWindowContentsOffset(win);
     const showBorder =
         !win.maximizedHorizontally &&
@@ -255,7 +254,7 @@ function refreshRoundedCorners(actor: RoundedWindowActor): void {
         !win.fullscreen;
 
     effect.updateUniforms(
-        cfg,
+        GLOBAL_ROUNDED_CORNER_SETTINGS,
         computeBounds(actor, windowContentOffset),
         showBorder,
     );

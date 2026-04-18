@@ -24,11 +24,9 @@ import {boxShadowCss} from '../utils/box_shadow.js';
 import {
     FOCUSED_SHADOW,
     GLOBAL_ROUNDED_CORNER_SETTINGS,
-    KEEP_SHADOW_FOR_MAXIMIZED_FULLSCREEN,
     UNFOCUSED_SHADOW,
 } from '../utils/config.js';
 import {CLIP_SHADOW_EFFECT, SHADOW_PADDING} from '../utils/constants.js';
-import {getRoundedCornersCfg} from './actor_helpers.js';
 import {windowStateMap} from './window_state.js';
 
 // ---------------------------------------------------------------------------
@@ -104,7 +102,7 @@ export function refreshShadow(actor: RoundedWindowActor): void {
         ? FOCUSED_SHADOW
         : UNFOCUSED_SHADOW;
 
-    const {borderRadius, padding} = getRoundedCornersCfg(win);
+    const {borderRadius, padding} = GLOBAL_ROUNDED_CORNER_SETTINGS;
 
     updateShadowActorStyle(
         win,
@@ -154,11 +152,9 @@ export function updateShadowActorStyle(
 
     const child = actor.firstChild as St.Bin;
 
-    const hideShadow =
-        !KEEP_SHADOW_FOR_MAXIMIZED_FULLSCREEN &&
-        (win.maximizedHorizontally ||
-            win.maximizedVertically ||
-            win.fullscreen);
+    const hideShadow = win.maximizedHorizontally ||
+        win.maximizedVertically ||
+        win.fullscreen;
 
     const shadowStyleKey = hideShadow
         ? `hidden|${actorStyle}`
