@@ -151,10 +151,8 @@ function _skipForLibToolkit(appType: AppType, isException: boolean): boolean {
     if (isException) {
         return false;
     }
-    return (
-        (SKIP_LIBADWAITA_APP && appType === 'LibAdwaita') ||
-        (SKIP_LIBHANDY_APP && appType === 'LibHandy')
-    );
+
+    return appType === 'LibAdwaita' || appType === 'LibHandy';
 }
 
 function _roundedCornersAllowedForWindowState(

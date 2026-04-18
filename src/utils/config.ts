@@ -48,8 +48,6 @@ export const UNFOCUSED_SHADOW: BoxShadow = {
 export const BLACKLIST: string[] = [];
 /** When false, blacklist entries are excluded from rounding. */
 export const WHITELIST_MODE = false;
-export const SKIP_LIBADWAITA_APP = true;
-export const SKIP_LIBHANDY_APP = false;
 export const BORDER_WIDTH = 1;
 export const KEEP_SHADOW_FOR_MAXIMIZED_FULLSCREEN = false;
 export const DEBUG_MODE = false;
