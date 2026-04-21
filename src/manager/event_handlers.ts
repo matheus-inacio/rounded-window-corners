@@ -35,8 +35,6 @@ import {
 } from './geometry.js';
 import {createShadow, refreshShadow} from './shadow.js';
 import {managedActors, windowStateMap} from './window_state.js';
-import { GLOBAL_ROUNDED_CORNER_SETTINGS } from '../utils/config.js';
-
 // ---------------------------------------------------------------------------
 // Public event handlers
 // ---------------------------------------------------------------------------
@@ -253,11 +251,7 @@ function refreshRoundedCorners(actor: RoundedWindowActor): void {
         !win.maximizedVertically &&
         !win.fullscreen;
 
-    effect.updateUniforms(
-        GLOBAL_ROUNDED_CORNER_SETTINGS,
-        computeBounds(actor, windowContentOffset),
-        showBorder,
-    );
+    effect.updateUniforms(computeBounds(actor, windowContentOffset), showBorder);
 
     // Update BindConstraint offsets so the shadow tracks the new window geometry.
     const shadow = state.shadow;

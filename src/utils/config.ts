@@ -21,7 +21,6 @@ export const GLOBAL_ROUNDED_CORNER_SETTINGS: RoundedCornerSettings = {
         top: 1,
         bottom: 1,
     },
-    borderColor: [0.2, 0.2, 0.2, 1.0],
     enabled: true,
 };
 
@@ -41,8 +40,8 @@ export const UNFOCUSED_SHADOW: BoxShadow = {
     opacity: 65,
 };
 
-export const BLACKLIST: string[] = [];
+export const BLACKLIST: Set<string> = new Set();
 /** When false, blacklist entries are excluded from rounding. */
 export const WHITELIST_MODE = false;
-export const BORDER_WIDTH = 1;
+export const BORDER_WIDTH = 0.6;
 export const DEBUG_MODE = false;

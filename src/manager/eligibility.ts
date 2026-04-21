@@ -75,7 +75,7 @@ export function isPermanentlyIneligible(
     }
 
     // Handles blacklist / whitelist logic.
-    const isException = BLACKLIST.includes(wmClass);
+    const isException = BLACKLIST.has(wmClass);
     if (isException !== WHITELIST_MODE) {
         return true;
     }

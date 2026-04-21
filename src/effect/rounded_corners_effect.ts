@@ -1,12 +1,12 @@
 /** @file Binds the actual corner rounding shader to the windows. */
 
-import type {Bounds, RoundedCornerSettings} from '../utils/types.js';
+import type {Bounds} from '../utils/types.js';
 
 import Cogl from 'gi://Cogl';
 import GObject from 'gi://GObject';
 import Shell from 'gi://Shell';
 
-import {BORDER_WIDTH} from '../utils/config.js';
+import {BORDER_WIDTH, GLOBAL_ROUNDED_CORNER_SETTINGS} from '../utils/config.js';
 import {readShader} from '../utils/file.js';
 
 const [declarations, code] = readShader(
@@ -17,11 +17,10 @@ const [declarations, code] = readShader(
 class UniformLocations {
     bounds = -1;
     clipRadius = -1;
-    borderWidth = -1;
-    borderColor = -1;
+    showBorder = -1; 
     borderedAreaBounds = -1;
     borderedAreaClipRadius = -1;
-    pixelStep = -1;
+    actorSize = -1; 
 }
 
 export const RoundedCornersEffect = GObject.registerClass(
@@ -29,20 +28,14 @@ export const RoundedCornersEffect = GObject.registerClass(
     class Effect extends Shell.GLSLEffect {
         #bounds = [0, 0, 0, 0];
         #borderedAreaBounds = [0, 0, 0, 0];
-        #pixelStep = [0, 0];
+        #actorSize = [0, 0]; 
         #clipRadius = [0];
-        #borderWidthUniform = [0];
+        #showBorderUniform = [0];
         #borderedAreaRadiusUniform = [0];
 
         #lastBounds = [Number.NaN, Number.NaN, Number.NaN, Number.NaN];
         #lastRadius = Number.NaN;
-        #lastBorderWidth = Number.NaN;
-        #lastBorderColor: [number, number, number, number] = [
-            Number.NaN,
-            Number.NaN,
-            Number.NaN,
-            Number.NaN,
-        ];
+        #lastShowBorder = Number.NaN;
         #lastBorderedAreaBounds = [
             Number.NaN,
             Number.NaN,
@@ -50,7 +43,7 @@ export const RoundedCornersEffect = GObject.registerClass(
             Number.NaN,
         ];
         #lastBorderedAreaRadius = Number.NaN;
-        #lastPixelStep = [Number.NaN, Number.NaN];
+        #lastActorSize = [Number.NaN, Number.NaN]; 
         #uniformLocations = new UniformLocations();
         #uniformsCached = false;
 
@@ -65,34 +58,40 @@ export const RoundedCornersEffect = GObject.registerClass(
 
         /**
          * Update uniforms of the shader.
-         * For more information, see the comments in the shader file.
          *
-         * @param config - Rounded corners configuration
          * @param windowBounds - Bounds of the window without padding
          * @param showBorder - Should draw borders
          */
-        updateUniforms(
-            config: RoundedCornerSettings,
-            windowBounds: Bounds,
-            showBorder: boolean,
-        ) {
-            const borderWidth = showBorder ? BORDER_WIDTH : 0;
-            const borderColor = config.borderColor;
+        updateUniforms(windowBounds: Bounds, showBorder: boolean) {
+            // Convert boolean to integer 1 or 0 for the shader
+            const showBorderFlag = showBorder ? 1 : 0;
 
-            const outerRadius = config.borderRadius;
-            const {padding} = config;
+            const outerRadius = GLOBAL_ROUNDED_CORNER_SETTINGS.borderRadius;
+            const {padding} = GLOBAL_ROUNDED_CORNER_SETTINGS;
 
-            this.#bounds[0] = windowBounds.x1 + padding.left;
-            this.#bounds[1] = windowBounds.y1 + padding.top;
-            this.#bounds[2] = windowBounds.x2 - padding.right;
-            this.#bounds[3] = windowBounds.y2 - padding.bottom;
+            const x1 = windowBounds.x1 + padding.left;
+            const y1 = windowBounds.y1 + padding.top;
+            const x2 = windowBounds.x2 - padding.right;
+            const y2 = windowBounds.y2 - padding.bottom;
 
-            this.#borderedAreaBounds[0] = this.#bounds[0] + borderWidth;
-            this.#borderedAreaBounds[1] = this.#bounds[1] + borderWidth;
-            this.#borderedAreaBounds[2] = this.#bounds[2] - borderWidth;
-            this.#borderedAreaBounds[3] = this.#bounds[3] - borderWidth;
+            // Pre-calculate Center and Half-Size for the shader
+            const halfWidth = (x2 - x1) * 0.5;
+            const halfHeight = (y2 - y1) * 0.5;
+            const centerX = x1 + halfWidth;
+            const centerY = y1 + halfHeight;
 
-            let borderedAreaRadius = Math.max(outerRadius - borderWidth, 0.0);
+            this.#bounds[0] = centerX;
+            this.#bounds[1] = centerY;
+            this.#bounds[2] = halfWidth;
+            this.#bounds[3] = halfHeight;
+
+            // Bordered area shares the same center. Always calculate using the constant width.
+            this.#borderedAreaBounds[0] = centerX;
+            this.#borderedAreaBounds[1] = centerY;
+            this.#borderedAreaBounds[2] = Math.max(halfWidth - BORDER_WIDTH, 0);
+            this.#borderedAreaBounds[3] = Math.max(halfHeight - BORDER_WIDTH, 0);
+
+            let borderedAreaRadius = Math.max(outerRadius - BORDER_WIDTH, 0.0);
 
             const actorWidth = this.actor.get_width();
             const actorHeight = this.actor.get_height();
@@ -100,14 +99,12 @@ export const RoundedCornersEffect = GObject.registerClass(
                 return;
             }
 
-            this.#pixelStep[0] = 1 / actorWidth;
-            this.#pixelStep[1] = 1 / actorHeight;
+            // Pass the raw size, no division needed
+            this.#actorSize[0] = actorWidth;
+            this.#actorSize[1] = actorHeight;
 
             let radius = outerRadius * 2.0;
-            const maxRadius = Math.min(
-                this.#bounds[2] - this.#bounds[0],
-                this.#bounds[3] - this.#bounds[1],
-            );
+            const maxRadius = Math.min(halfWidth * 2, halfHeight * 2);
             if (radius > maxRadius) {
                 radius = maxRadius;
             }
@@ -121,31 +118,28 @@ export const RoundedCornersEffect = GObject.registerClass(
             this.#setUniforms(
                 this.#bounds,
                 radius,
-                borderWidth,
-                borderColor,
+                showBorderFlag,
                 this.#borderedAreaBounds,
                 borderedAreaRadius,
-                this.#pixelStep,
+                this.#actorSize,
             );
         }
 
         #setUniforms(
             bounds: number[],
             radius: number,
-            borderWidth: number,
-            borderColor: [number, number, number, number],
+            showBorderFlag: number,
             borderedAreaBounds: number[],
             borderedAreaRadius: number,
-            pixelStep: number[],
+            actorSize: number[],
         ) {
             if (
                 this.#lastRadius === radius &&
-                this.#lastBorderWidth === borderWidth &&
+                this.#lastShowBorder === showBorderFlag &&
                 this.#lastBorderedAreaRadius === borderedAreaRadius &&
                 float4Equal(this.#lastBounds, bounds) &&
-                float4Equal(this.#lastBorderColor, borderColor) &&
                 float4Equal(this.#lastBorderedAreaBounds, borderedAreaBounds) &&
-                float2Equal(this.#lastPixelStep, pixelStep)
+                float2Equal(this.#lastActorSize, actorSize)
             ) {
                 return;
             }
@@ -156,45 +150,34 @@ export const RoundedCornersEffect = GObject.registerClass(
 
             const uniforms = this.#uniformLocations;
             this.set_uniform_float(uniforms.bounds, 4, bounds);
+            
             this.#clipRadius[0] = radius;
-            this.#borderWidthUniform[0] = borderWidth;
+            this.#showBorderUniform[0] = showBorderFlag;
             this.#borderedAreaRadiusUniform[0] = borderedAreaRadius;
+            
             this.set_uniform_float(uniforms.clipRadius, 1, this.#clipRadius);
-            this.set_uniform_float(
-                uniforms.borderWidth,
-                1,
-                this.#borderWidthUniform,
-            );
-            this.set_uniform_float(uniforms.borderColor, 4, borderColor);
-            this.set_uniform_float(
-                uniforms.borderedAreaBounds,
-                4,
-                borderedAreaBounds,
-            );
-            this.set_uniform_float(
-                uniforms.borderedAreaClipRadius,
-                1,
-                this.#borderedAreaRadiusUniform,
-            );
-            this.set_uniform_float(uniforms.pixelStep, 2, pixelStep);
+            
+            // Note: GLSL bool uniforms require integer setting via the host. 
+            // If your Shell version lacks set_uniform_int, you may need to revert to float.
+            this.set_uniform_float(uniforms.showBorder, 1, this.#showBorderUniform);
+            
+            this.set_uniform_float(uniforms.borderedAreaBounds, 4, borderedAreaBounds);
+            this.set_uniform_float(uniforms.borderedAreaClipRadius, 1, this.#borderedAreaRadiusUniform);
+            this.set_uniform_float(uniforms.actorSize, 2, actorSize);
 
             this.#lastBounds[0] = bounds[0];
             this.#lastBounds[1] = bounds[1];
             this.#lastBounds[2] = bounds[2];
             this.#lastBounds[3] = bounds[3];
             this.#lastRadius = radius;
-            this.#lastBorderWidth = borderWidth;
-            this.#lastBorderColor[0] = borderColor[0];
-            this.#lastBorderColor[1] = borderColor[1];
-            this.#lastBorderColor[2] = borderColor[2];
-            this.#lastBorderColor[3] = borderColor[3];
+            this.#lastShowBorder = showBorderFlag;
             this.#lastBorderedAreaBounds[0] = borderedAreaBounds[0];
             this.#lastBorderedAreaBounds[1] = borderedAreaBounds[1];
             this.#lastBorderedAreaBounds[2] = borderedAreaBounds[2];
             this.#lastBorderedAreaBounds[3] = borderedAreaBounds[3];
             this.#lastBorderedAreaRadius = borderedAreaRadius;
-            this.#lastPixelStep[0] = pixelStep[0];
-            this.#lastPixelStep[1] = pixelStep[1];
+            this.#lastActorSize[0] = actorSize[0];
+            this.#lastActorSize[1] = actorSize[1];
             this.queue_repaint();
         }
 
@@ -206,23 +189,18 @@ export const RoundedCornersEffect = GObject.registerClass(
             const uniforms = this.#uniformLocations;
             uniforms.bounds = this.get_uniform_location('bounds');
             uniforms.clipRadius = this.get_uniform_location('clipRadius');
-            uniforms.borderWidth = this.get_uniform_location('borderWidth');
-            uniforms.borderColor = this.get_uniform_location('borderColor');
-            uniforms.borderedAreaBounds =
-                this.get_uniform_location('borderedAreaBounds');
-            uniforms.borderedAreaClipRadius = this.get_uniform_location(
-                'borderedAreaClipRadius',
-            );
-            uniforms.pixelStep = this.get_uniform_location('pixelStep');
+            uniforms.showBorder = this.get_uniform_location('showBorder');
+            uniforms.borderedAreaBounds = this.get_uniform_location('borderedAreaBounds');
+            uniforms.borderedAreaClipRadius = this.get_uniform_location('borderedAreaClipRadius');
+            uniforms.actorSize = this.get_uniform_location('actorSize'); 
 
             const ready =
                 uniforms.bounds >= 0 &&
                 uniforms.clipRadius >= 0 &&
-                uniforms.borderWidth >= 0 &&
-                uniforms.borderColor >= 0 &&
+                uniforms.showBorder >= 0 &&
                 uniforms.borderedAreaBounds >= 0 &&
                 uniforms.borderedAreaClipRadius >= 0 &&
-                uniforms.pixelStep >= 0;
+                uniforms.actorSize >= 0; 
 
             if (ready) {
                 this.#uniformsCached = true;
