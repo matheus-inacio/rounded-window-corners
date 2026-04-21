@@ -17,7 +17,7 @@ import {isPermanentlyIneligible} from './eligibility.js';
 const pendingEffectApplications = new WeakMap<Meta.WindowActor, number>();
 const pendingResizeUpdates = new WeakMap<RoundedWindowActor, number>();
 const pendingWmClassListeners = new WeakMap<Meta.Window, number>();
-const initializedWindows = new WeakSet<Meta.Window>();
+const initializedActors = new WeakSet<RoundedWindowActor>();
 
 class GlobalSignalManager {
     private connections: { object: GObject.Object; id: number }[] = [];
@@ -218,14 +218,8 @@ function applyEffectTo(actor: RoundedWindowActor) {
         return;
     }
 
-    const metaWindow = actor.metaWindow;
-    if (!metaWindow) {
-        return;
-    }
-
-    // Use the Meta.Window as the dedup key so re-created actors for the
-    // same window don't re-initialize.
-    if (initializedWindows.has(metaWindow)) {
+    // Prevent double-initialization of signals
+    if (initializedActors.has(actor)) {
         return;
     }
 
@@ -238,6 +232,7 @@ function applyEffectTo(actor: RoundedWindowActor) {
     }
 
     const texture = actor.get_texture();
+    const metaWindow = actor.metaWindow;
 
     if (!(texture && metaWindow)) {
         return;
@@ -248,7 +243,8 @@ function applyEffectTo(actor: RoundedWindowActor) {
         return;
     }
 
-    initializedWindows.add(metaWindow);
+    // Flag as initialized before binding the massive signal list
+    initializedActors.add(actor);
 
     // Window resized.
     //
@@ -273,9 +269,7 @@ function applyEffectTo(actor: RoundedWindowActor) {
 }
 
 function removeEffectFrom(actor: RoundedWindowActor) {
-    if (actor.metaWindow) {
-        initializedWindows.delete(actor.metaWindow);
-    }
+    initializedActors.delete(actor);
 
     // Intercept and destroy the background resize task so it doesn't 
     // accidentally resurrect the shadow after the window is closed.
