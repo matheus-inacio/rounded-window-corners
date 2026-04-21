@@ -225,19 +225,19 @@ function refreshRoundedCorners(actor: RoundedWindowActor): void {
     const win = actor.metaWindow;
     if (!win) return;
 
+    const shouldHaveEffect = shouldEnableEffect(win);
+    if (!shouldHaveEffect) {
+        onRemoveEffect(actor);
+        return;
+    }
+
     const state = windowStateMap.get(actor);
     const effect = getRoundedCornersEffect(actor);
 
     const hasEffect = effect && state;
-    const shouldHaveEffect = shouldEnableEffect(win);
 
     if (!hasEffect) {
         onAddEffect(actor);
-        return;
-    }
-
-    if (!shouldHaveEffect) {
-        onRemoveEffect(actor);
         return;
     }
 
