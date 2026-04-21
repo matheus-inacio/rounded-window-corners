@@ -186,6 +186,14 @@ async function getAppTypeAsync(win: Meta.Window): Promise<AppType> {
         return appTypeCache.get(wmClass)!;
     }
 
+    if (wmClass && wmClass.toLowerCase().endsWith('.exe')) {
+        logDebug(
+            `AppType fast-path for "${wmClass}": skipping I/O for .exe, assuming Other`,
+        );
+        appTypeCache.set(wmClass, 'Other');
+        return 'Other';
+    }
+
     const pid = win.get_pid();
     logDebug(
         `Detecting app type for "${wmClass}" (pid ${pid}) via map_files…`,
