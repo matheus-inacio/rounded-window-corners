@@ -246,6 +246,16 @@ function applyEffectTo(actor: RoundedWindowActor) {
     // Flag as initialized before binding the massive signal list
     initializedActors.add(actor);
 
+    // --- FIX: Prevent GC Sweep Crashes on MetaShapedTexture ---
+    // If the texture is replaced or destroyed, we must proactively disconnect
+    // its signals before the garbage collector sweeps it.
+    actorSignals.connect(actor, actor, 'notify::first-child', () => {
+        if (actor.get_texture() !== texture) {
+            removeEffectFrom(actor);
+            applyEffectTo(actor);
+        }
+    });
+
     // Window resized.
     //
     // The signal has to be connected both to the actor and the texture. Why is
@@ -254,15 +264,18 @@ function applyEffectTo(actor: RoundedWindowActor) {
     // *unless they are pinned in the dock*. So yeah, GNOME is magic.
     actorSignals.connect(actor, actor, 'notify::size', () => throttledResizeHandler(actor));
     actorSignals.connect(actor, texture, 'size-changed', () => throttledResizeHandler(actor));
+
     // Get notified about fullscreen explicitly, since a window must not change in
     // size to go fullscreen
     actorSignals.connect(actor, metaWindow, 'notify::fullscreen', () => throttledResizeHandler(actor));
 
     // Focus / Workspace changes
     actorSignals.connect(actor, metaWindow, 'notify::appears-focused', () => handleFocusChanged(actor));
+
     // Workspace or monitor of the window changed.
     actorSignals.connect(actor, metaWindow, 'workspace-changed', () => handleFocusChanged(actor));
 
+    // Parent actor destruction covers normal window closing
     actorSignals.connect(actor, actor, 'destroy', () => removeEffectFrom(actor));
 
     handlers.onAddEffect(actor);
