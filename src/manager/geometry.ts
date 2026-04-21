@@ -7,6 +7,7 @@
  */
 
 import Meta from 'gi://Meta';
+import type Mtk from '@girs/mtk-17';
 import type {Bounds} from '../utils/types.js';
 
 import {SHADOW_PADDING} from '../utils/constants.js';
@@ -73,9 +74,10 @@ export function computeBounds(
  */
 export function computeWindowContentsOffset(
     window: Meta.Window,
+    prefetchedFrameRect?: Mtk.Rectangle
 ): [number, number, number, number] {
     const bufferRect = window.get_buffer_rect();
-    const frameRect = window.get_frame_rect();
+    const frameRect = prefetchedFrameRect ?? window.get_frame_rect();
     return [
         frameRect.x - bufferRect.x,
         frameRect.y - bufferRect.y,

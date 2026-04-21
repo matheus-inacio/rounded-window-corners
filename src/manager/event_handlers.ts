@@ -19,6 +19,7 @@ import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
+import type Mtk from '@girs/mtk-17';
 
 import {RoundedCornersEffect} from '../effect/rounded_corners_effect.js';
 import {ROUNDED_CORNERS_EFFECT} from '../utils/constants.js';
@@ -92,7 +93,7 @@ export function onAddEffect(actor: RoundedWindowActor): void {
     });
     managedActors.add(actor);
 
-    refreshRoundedCorners(actor);
+    refreshRoundedCorners(actor, frameRect);
 }
 
 export function onRemoveEffect(actor: RoundedWindowActor): void {
@@ -229,9 +230,17 @@ export {refreshShadow as onFocusChanged};
  * shader uniforms and shadow `BindConstraint` offsets to match the current
  * window geometry.
  */
-function refreshRoundedCorners(actor: RoundedWindowActor): void {
+function refreshRoundedCorners(
+    actor: RoundedWindowActor,
+    prefetchedFrameRect?: Mtk.Rectangle): void {
     const win = actor.metaWindow;
     if (!win) return;
+
+    const frameRect = prefetchedFrameRect ?? win.get_frame_rect();
+    if (frameRect.width <= 0 || frameRect.height <= 0 || actor.width <= 0 || actor.height <= 0) {
+        logDebug(`Skipping ${win.title}: Invalid geometry (0x0)`);
+        return;
+    }
 
     const shouldHaveEffect = shouldEnableEffect(win);
     if (!shouldHaveEffect) {
@@ -253,7 +262,7 @@ function refreshRoundedCorners(actor: RoundedWindowActor): void {
         effect.enabled = true;
     }
 
-    const windowContentOffset = computeWindowContentsOffset(win);
+    const windowContentOffset = computeWindowContentsOffset(win, frameRect);
     const showBorder =
         !win.maximizedHorizontally &&
         !win.maximizedVertically &&
