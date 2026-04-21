@@ -44,6 +44,14 @@ export function onAddEffect(actor: RoundedWindowActor): void {
 
     const win = actor.metaWindow;
 
+    // 1. Guard against 0x0 or invalid Wine/Proton windows
+    const frameRect = win.get_frame_rect();
+    if (frameRect.width <= 0 || frameRect.height <= 0 || actor.width <= 0 || actor.height <= 0) {
+        logDebug(`Skipping ${win.title}: Invalid geometry (0x0)`);
+        return;
+    }
+
+    // 2. Guard against windows that shouldn't have the effect
     if (!shouldEnableEffect(win)) {
         logDebug(`Skipping ${win.title}`);
         return;
