@@ -17,7 +17,9 @@ const [declarations, code] = readShader(
 );
 
 export const ClipShadowEffect = GObject.registerClass(
-    {},
+    {
+        GTypeName: 'RoundedWindowsLite_ClipShadowEffect',
+    },
     class extends Shell.GLSLEffect {
         vfunc_build_pipeline() {
             this.add_glsl_snippet(

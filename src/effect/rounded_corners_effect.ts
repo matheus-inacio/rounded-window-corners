@@ -24,7 +24,9 @@ class UniformLocations {
 }
 
 export const RoundedCornersEffect = GObject.registerClass(
-    {},
+    {
+        GTypeName: 'RoundedWindowsLite_RoundedCornersEffect',
+    },
     class Effect extends Shell.GLSLEffect {
         #bounds = [0, 0, 0, 0];
         #borderedAreaBounds = [0, 0, 0, 0];
