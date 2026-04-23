@@ -58,6 +58,12 @@ export function onAddEffect(actor: RoundedWindowActor): void {
         return;
     }
 
+    // 3. Guard against duplicate effect applications or leaked shadows
+    if (windowStateMap.has(actor) || getRoundedCornersEffect(actor)) {
+        logDebug(`Skipping ${win.title}: Effect already applied`);
+        return;
+    }
+
     unwrapActor(actor)?.add_effect_with_name(
         ROUNDED_CORNERS_EFFECT,
         new RoundedCornersEffect(),
@@ -256,6 +262,11 @@ function refreshRoundedCorners(
     const hasEffect = effect && state;
 
     if (!hasEffect) {
+        // If the state is partially applied (e.g. effect stripped but state remains),
+        // cleanly remove everything before reapplying to prevent leaks.
+        if (state || effect) {
+            onRemoveEffect(actor);
+        }
         onAddEffect(actor);
         return;
     }
