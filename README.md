@@ -1,6 +1,7 @@
 <div align="center">
   <h1>Rounded Windows - Lite</h1>
   <p><i>An opinionated GNOME extension for lightweight, squircle-style window corners</i></p>
+  <img src="Preview.png" alt="Preview" />
 </div>
 <br>
 
