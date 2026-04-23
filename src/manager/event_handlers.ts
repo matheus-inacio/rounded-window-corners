@@ -192,11 +192,13 @@ export function onUnminimize(actor: RoundedWindowActor): void {
         type Effect = Clutter.Effect & {timerId: Clutter.Timeline};
         const timer = (magicLampEffect as Effect).timerId;
 
+        let disconnected = false;
         const id = timer.connect('new-frame', source => {
-            if (source.get_progress() > 0.98) {
+            if (source.get_progress() > 0.98 && !disconnected) {
                 state.shadow.visible = true;
                 roundedCornersEffect.enabled = true;
                 source.disconnect(id);
+                disconnected = true;
             }
         });
     }

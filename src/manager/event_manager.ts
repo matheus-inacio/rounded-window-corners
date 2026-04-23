@@ -169,6 +169,18 @@ export function disableEffect() {
             GLib.source_remove(id);
             pendingEffectApplications.delete(actor as Meta.WindowActor);
         }
+
+        const win = (actor as Meta.WindowActor).metaWindow;
+        if (win) {
+            const notifyId = pendingWmClassListeners.get(win);
+            if (notifyId) {
+                if (isAlive(win)) {
+                    win.disconnect(notifyId);
+                }
+                pendingWmClassListeners.delete(win);
+            }
+        }
+
         removeEffectFrom(actor as RoundedWindowActor);
     }
 

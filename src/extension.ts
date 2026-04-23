@@ -27,11 +27,10 @@ export default class RoundedWindowCornersReborn extends Extension {
                 () => {
                     enableEffect();
 
-                    layoutManager.disconnect(
-                        // biome-ignore lint/style/noNonNullAssertion: Since this happens inside 
-                        //  the connection, there is no way for this to be null.
-                        this.#layoutManagerStartupConnection!,
-                    );
+                    if (this.#layoutManagerStartupConnection !== null) {
+                        layoutManager.disconnect(this.#layoutManagerStartupConnection);
+                        this.#layoutManagerStartupConnection = null;
+                    }
                 },
             );
         } else {
