@@ -5,7 +5,7 @@ buildDir := './_build'
 uuid := 'rounded-windows-lite@matheus-inacio'
 
 # Compile the extension and all resources
-build: clean && pot
+build: clean
   # Compile TypeScript
   npm install
   npx tsc --outDir {{buildDir}}
@@ -30,29 +30,3 @@ pack: build
 # Delete the build directory
 clean:
   rm -rf {{buildDir}} {{uuid}}.shell-extension.zip
-  
-# Update and compile the translation files
-pot:
-  mapfile -t ui_files < <(find src -type f -name '*.ui' 2>/dev/null || true); \
-  if (( ${#ui_files[@]} > 0 )); then \
-    xgettext --from-code=UTF-8 \
-             --output=po/{{uuid}}.pot \
-             "${ui_files[@]}"; \
-  fi
-
-  xgettext --from-code=UTF-8 \
-           --output=po/{{uuid}}.pot \
-           --language=JavaScript \
-           --join-existing \
-           src/**/*.ts
-
-  for file in po/*.po; do \
-    msgmerge -q -U --backup=off $file po/{{uuid}}.pot; \
-  done;
-
-  for file in po/*.po; do \
-    locale=$(basename $file .po); \
-    dir="{{buildDir}}/locale/$locale/LC_MESSAGES"; \
-    mkdir -p $dir; \
-    msgfmt -o $dir/{{uuid}}.mo $file; \
-  done;
