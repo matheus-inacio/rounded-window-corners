@@ -7,6 +7,8 @@ on:
   pull_request:
     paths-ignore:
       - README.md
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:
@@ -29,8 +31,8 @@ jobs:
       - name: Install gettext
         run: sudo apt install gettext
 
-      - name: Build the extension
-        run: just build
+      - name: Build and pack the extension
+        run: just pack
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -38,3 +40,28 @@ jobs:
           name: rounded-windows-lite@matheus-inacio.com
           path: _build/
           compression-level: 9
+
+      - name: Upload extension zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-zip
+          path: rounded-windows-lite@matheus-inacio.shell-extension.zip
+          compression-level: 0
+
+  release:
+    name: Upload to release
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download extension zip
+        uses: actions/download-artifact@v4
+        with:
+          name: extension-zip
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: rounded-windows-lite@matheus-inacio.shell-extension.zip
