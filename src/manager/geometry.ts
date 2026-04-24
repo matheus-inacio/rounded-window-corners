@@ -6,11 +6,42 @@
  * I/O.
  */
 
-import Meta from 'gi://Meta';
 import type Mtk from '@girs/mtk-17';
 import type {Bounds} from '../utils/types.js';
 
+import Meta from 'gi://Meta';
+
 import {SHADOW_PADDING} from '../utils/constants.js';
+
+/**
+ * Compute the shadow insets for a Wayland window that embeds its own
+ * client-side shadows (e.g. Kitty, JetBrains IDEs).
+ *
+ * This is designed to be called **once** per window and cached in the
+ * window state, so we avoid calling `get_wm_class_instance()` +
+ * `toLowerCase()` on every resize event.
+ *
+ * @param win - The window to inspect.
+ * @returns `[x1, y1, x2, y2]` insets, or `null` if no special insets apply.
+ */
+export function computeShadowInsets(
+    win: Meta.Window,
+): readonly number[] | null {
+    if (win.get_client_type() !== Meta.WindowClientType.WAYLAND) {
+        return null;
+    }
+
+    const wmClass = win.get_wm_class_instance()?.toLowerCase() ?? '';
+
+    if (wmClass === 'kitty') {
+        return [11, 35, 11, 11] as const;
+    }
+    if (wmClass.startsWith('jetbrains-')) {
+        return [18, 18, 18, 18] as const;
+    }
+
+    return null;
+}
 
 /**
  * Compute the outer bounds that the rounded-corner shader should clip to.
@@ -22,10 +53,13 @@ import {SHADOW_PADDING} from '../utils/constants.js';
  * @param actor - The window actor.
  * @param [x, y, width, height] - Content offsets returned by
  *        {@link computeWindowContentsOffset}.
+ * @param shadowInsets - Pre-computed insets from {@link computeShadowInsets},
+ *        or `null`/`undefined` if none apply.
  */
 export function computeBounds(
     actor: Meta.WindowActor,
     [x, y, width, height]: [number, number, number, number],
+    shadowInsets?: readonly number[] | null,
 ): Bounds {
     const bounds = {
         x1: x + 1,
@@ -34,28 +68,11 @@ export function computeBounds(
         y2: y + actor.height + height,
     };
 
-    const win = actor.metaWindow;
-
-    // Only Wayland clients with custom decorations need manual shadow clipping.
-    if (win.get_client_type() !== Meta.WindowClientType.WAYLAND) {
-        return bounds;
-    }
-
-    const wmClass = win.get_wm_class_instance()?.toLowerCase() ?? '';
-    let shadows: number[] | undefined;
-
-    if (wmClass === 'kitty') {
-        shadows = [11, 35, 11, 11];
-    } else if (wmClass.startsWith('jetbrains-')) {
-        shadows = [18, 18, 18, 18];
-    }
-
-    if (shadows) {
-        const [x1, y1, x2, y2] = shadows;
-        bounds.x1 += x1;
-        bounds.y1 += y1;
-        bounds.x2 -= x2;
-        bounds.y2 -= y2;
+    if (shadowInsets) {
+        bounds.x1 += shadowInsets[0];
+        bounds.y1 += shadowInsets[1];
+        bounds.x2 -= shadowInsets[2];
+        bounds.y2 -= shadowInsets[3];
     }
 
     return bounds;
@@ -74,7 +91,7 @@ export function computeBounds(
  */
 export function computeWindowContentsOffset(
     window: Meta.Window,
-    prefetchedFrameRect?: Mtk.Rectangle
+    prefetchedFrameRect?: Mtk.Rectangle,
 ): [number, number, number, number] {
     const bufferRect = window.get_buffer_rect();
     const frameRect = prefetchedFrameRect ?? window.get_frame_rect();
@@ -95,14 +112,12 @@ export function computeWindowContentsOffset(
  * @returns `[x, y, width, height]` offsets to set on the shadow's
  *          `BindConstraint`s.
  */
-export function computeShadowActorOffset(
-    [offsetX, offsetY, offsetWidth, offsetHeight]: [
-        number,
-        number,
-        number,
-        number,
-    ],
-): number[] {
+export function computeShadowActorOffset([
+    offsetX,
+    offsetY,
+    offsetWidth,
+    offsetHeight,
+]: [number, number, number, number]): number[] {
     return [
         offsetX - SHADOW_PADDING,
         offsetY - SHADOW_PADDING,

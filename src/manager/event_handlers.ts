@@ -32,6 +32,7 @@ import {shouldEnableEffect} from './eligibility.js';
 import {
     computeBounds,
     computeShadowActorOffset,
+    computeShadowInsets,
     computeWindowContentsOffset,
 } from './geometry.js';
 import {createShadow, refreshShadow} from './shadow.js';
@@ -91,11 +92,18 @@ export function onAddEffect(actor: RoundedWindowActor): void {
         propertyBindings.push(binding);
     }
 
-    // Overwrite the provisional state written by createShadow with the full state.
+    // Compute & cache Wayland shadow insets once per window instead of on every resize.
+    const cachedShadowInsets = computeShadowInsets(win);
+
+    // Retrieve the provisional state (already contains shadowConstraints from createShadow)
+    // and overwrite it with the full state.
+    const provisionalState = windowStateMap.get(actor);
     windowStateMap.set(actor, {
         shadow,
         unminimizedTimeoutId: 0,
         propertyBindings,
+        shadowConstraints: provisionalState?.shadowConstraints,
+        cachedShadowInsets,
     });
     managedActors.add(actor);
 
@@ -276,22 +284,28 @@ function refreshRoundedCorners(
     }
 
     const windowContentOffset = computeWindowContentsOffset(win, frameRect);
-    const showBorder =
-        !win.maximizedHorizontally &&
-        !win.maximizedVertically &&
-        !win.fullscreen;
+    const showBorder = !(
+        win.maximizedHorizontally ||
+        win.maximizedVertically ||
+        win.fullscreen
+    );
 
-    effect.updateUniforms(computeBounds(actor, windowContentOffset), showBorder);
+    effect.updateUniforms(
+        computeBounds(actor, windowContentOffset, state.cachedShadowInsets),
+        showBorder,
+    );
 
     // Update BindConstraint offsets so the shadow tracks the new window geometry.
-    const shadow = state.shadow;
+    // Use cached constraint references for direct indexed access — avoids
+    // forEach() closure allocation + instanceof type-check per resize event.
     const offsets = computeShadowActorOffset(windowContentOffset);
-    shadow.get_constraints().forEach((constraint, i) => {
-        if (constraint instanceof Clutter.BindConstraint) {
+    const constraints = state.shadowConstraints;
+    if (constraints) {
+        for (let i = 0; i < 4; i++) {
             const nextOffset = offsets[i];
-            if (constraint.offset !== nextOffset) {
-                constraint.offset = nextOffset;
+            if (constraints[i].offset !== nextOffset) {
+                constraints[i].offset = nextOffset;
             }
         }
-    });
+    }
 }

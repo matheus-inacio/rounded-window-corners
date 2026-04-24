@@ -11,8 +11,8 @@ import type {RoundedWindowActor} from '../utils/types.js';
 import GLib from 'gi://GLib';
 
 import {logDebug} from '../utils/log.js';
-import * as handlers from './event_handlers.js';
 import {isPermanentlyIneligible} from './eligibility.js';
+import * as handlers from './event_handlers.js';
 
 const pendingEffectApplications = new WeakMap<Meta.WindowActor, number>();
 const pendingResizeUpdates = new WeakMap<RoundedWindowActor, number>();
@@ -20,9 +20,13 @@ const pendingWmClassListeners = new WeakMap<Meta.Window, number>();
 const initializedActors = new WeakSet<RoundedWindowActor>();
 
 class GlobalSignalManager {
-    private connections: { object: GObject.Object; id: number }[] = [];
+    private connections: {object: GObject.Object; id: number}[] = [];
 
-    connect(object: GObject.Object, signal: string, callback: (...args: any[]) => any) {
+    connect(
+        object: GObject.Object,
+        signal: string,
+        callback: (...args: any[]) => any,
+    ) {
         this.connections.push({
             object,
             id: object.connect(signal, callback),
@@ -38,12 +42,20 @@ class GlobalSignalManager {
 }
 
 class ActorSignalManager {
-    private connections = new WeakMap<RoundedWindowActor | Meta.WindowActor, { object: GObject.Object; id: number }[]>();
+    private connections = new WeakMap<
+        RoundedWindowActor | Meta.WindowActor,
+        {object: GObject.Object; id: number}[]
+    >();
 
-    connect(actor: RoundedWindowActor | Meta.WindowActor, object: GObject.Object, signal: string, callback: (...args: any[]) => any): number {
+    connect(
+        actor: RoundedWindowActor | Meta.WindowActor,
+        object: GObject.Object,
+        signal: string,
+        callback: (...args: any[]) => any,
+    ): number {
         const id = object.connect(signal, callback);
         const conns = this.connections.get(actor) || [];
-        conns.push({ object, id });
+        conns.push({object, id});
         this.connections.set(actor, conns);
         return id;
     }
@@ -115,7 +127,7 @@ export function enableEffect() {
 
                     // Double-check inside the idle loop
                     if (!isAlive(actor)) return GLib.SOURCE_REMOVE;
-                    
+
                     applyEffectTo(actor as RoundedWindowActor);
                     return GLib.SOURCE_REMOVE;
                 });
@@ -137,27 +149,41 @@ export function enableEffect() {
         },
     );
 
-    globalSignals.connect(wm, 'minimize', (_: Shell.WM, actor: Meta.WindowActor) => handlers.onMinimize(actor as RoundedWindowActor));
-    globalSignals.connect(wm, 'unminimize', (_: Shell.WM, actor: Meta.WindowActor) => handlers.onUnminimize(actor as RoundedWindowActor));
+    globalSignals.connect(
+        wm,
+        'minimize',
+        (_: Shell.WM, actor: Meta.WindowActor) =>
+            handlers.onMinimize(actor as RoundedWindowActor),
+    );
+    globalSignals.connect(
+        wm,
+        'unminimize',
+        (_: Shell.WM, actor: Meta.WindowActor) =>
+            handlers.onUnminimize(actor as RoundedWindowActor),
+    );
 
-    globalSignals.connect(wm, 'destroy', (_: Shell.WM, actor: Meta.WindowActor) => {
-        const win = actor.metaWindow;
+    globalSignals.connect(
+        wm,
+        'destroy',
+        (_: Shell.WM, actor: Meta.WindowActor) => {
+            const win = actor.metaWindow;
 
-        // Clean up the wm-class listener if the window is destroyed before the class resolves
-        if (win) {
-            const notifyId = pendingWmClassListeners.get(win);
-            if (notifyId) {
-                win.disconnect(notifyId);
-                pendingWmClassListeners.delete(win);
+            // Clean up the wm-class listener if the window is destroyed before the class resolves
+            if (win) {
+                const notifyId = pendingWmClassListeners.get(win);
+                if (notifyId) {
+                    win.disconnect(notifyId);
+                    pendingWmClassListeners.delete(win);
+                }
             }
-        }
 
-        const idleId = pendingEffectApplications.get(actor);
-        if (idleId) {
-            GLib.source_remove(idleId);
-            pendingEffectApplications.delete(actor);
-        }
-    });
+            const idleId = pendingEffectApplications.get(actor);
+            if (idleId) {
+                GLib.source_remove(idleId);
+                pendingEffectApplications.delete(actor);
+            }
+        },
+    );
 
     globalSignals.connect(global.display, 'restacked', handlers.onRestacked);
 }
@@ -192,7 +218,9 @@ export function disableEffect() {
  */
 function throttledResizeHandler(actor: RoundedWindowActor) {
     if (actor.metaWindow && isPermanentlyIneligible(actor.metaWindow)) {
-        logDebug(`Optimization skip triggered: Detaching signals and removing effect from ${actor.metaWindow.title}`);
+        logDebug(
+            `Optimization skip triggered: Detaching signals and removing effect from ${actor.metaWindow.title}`,
+        );
         removeEffectFrom(actor);
         return;
     }
@@ -202,7 +230,7 @@ function throttledResizeHandler(actor: RoundedWindowActor) {
     const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
         pendingResizeUpdates.delete(actor);
 
-        // Prevent the callback from running if the actor was destroyed between 
+        // Prevent the callback from running if the actor was destroyed between
         // the event firing and this idle frame executing.
         if (!isAlive(actor)) {
             return GLib.SOURCE_REMOVE;
@@ -217,7 +245,9 @@ function throttledResizeHandler(actor: RoundedWindowActor) {
 
 function handleFocusChanged(actor: RoundedWindowActor) {
     if (actor.metaWindow && isPermanentlyIneligible(actor.metaWindow)) {
-        logDebug(`Optimization skip triggered: Detaching signals and removing effect from ${actor.metaWindow.title}`);
+        logDebug(
+            `Optimization skip triggered: Detaching signals and removing effect from ${actor.metaWindow.title}`,
+        );
         removeEffectFrom(actor);
         return;
     }
@@ -236,10 +266,15 @@ function applyEffectTo(actor: RoundedWindowActor) {
     }
 
     if (!actor.firstChild) {
-        const signalId = actorSignals.connect(actor, actor, 'notify::first-child', () => {
-            actorSignals.disconnect(actor, signalId);
-            applyEffectTo(actor);
-        });
+        const signalId = actorSignals.connect(
+            actor,
+            actor,
+            'notify::first-child',
+            () => {
+                actorSignals.disconnect(actor, signalId);
+                applyEffectTo(actor);
+            },
+        );
         return;
     }
 
@@ -251,7 +286,9 @@ function applyEffectTo(actor: RoundedWindowActor) {
     }
 
     if (isPermanentlyIneligible(metaWindow)) {
-        logDebug(`Skipping ${metaWindow.title} (Permanently Ineligible on Initialization)`);
+        logDebug(
+            `Skipping ${metaWindow.title} (Permanently Ineligible on Initialization)`,
+        );
         return;
     }
 
@@ -274,21 +311,33 @@ function applyEffectTo(actor: RoundedWindowActor) {
     // that? I have no idea. But without that, weird bugs can happen. For
     // example, when using Dash to Dock, all opened windows will be invisible
     // *unless they are pinned in the dock*. So yeah, GNOME is magic.
-    actorSignals.connect(actor, actor, 'notify::size', () => throttledResizeHandler(actor));
-    actorSignals.connect(actor, texture, 'size-changed', () => throttledResizeHandler(actor));
+    actorSignals.connect(actor, actor, 'notify::size', () =>
+        throttledResizeHandler(actor),
+    );
+    actorSignals.connect(actor, texture, 'size-changed', () =>
+        throttledResizeHandler(actor),
+    );
 
     // Get notified about fullscreen explicitly, since a window must not change in
     // size to go fullscreen
-    actorSignals.connect(actor, metaWindow, 'notify::fullscreen', () => throttledResizeHandler(actor));
+    actorSignals.connect(actor, metaWindow, 'notify::fullscreen', () =>
+        throttledResizeHandler(actor),
+    );
 
     // Focus / Workspace changes
-    actorSignals.connect(actor, metaWindow, 'notify::appears-focused', () => handleFocusChanged(actor));
+    actorSignals.connect(actor, metaWindow, 'notify::appears-focused', () =>
+        handleFocusChanged(actor),
+    );
 
     // Workspace or monitor of the window changed.
-    actorSignals.connect(actor, metaWindow, 'workspace-changed', () => handleFocusChanged(actor));
+    actorSignals.connect(actor, metaWindow, 'workspace-changed', () =>
+        handleFocusChanged(actor),
+    );
 
     // Parent actor destruction covers normal window closing
-    actorSignals.connect(actor, actor, 'destroy', () => removeEffectFrom(actor));
+    actorSignals.connect(actor, actor, 'destroy', () =>
+        removeEffectFrom(actor),
+    );
 
     handlers.onAddEffect(actor);
 }
@@ -296,7 +345,7 @@ function applyEffectTo(actor: RoundedWindowActor) {
 function removeEffectFrom(actor: RoundedWindowActor) {
     initializedActors.delete(actor);
 
-    // Intercept and destroy the background resize task so it doesn't 
+    // Intercept and destroy the background resize task so it doesn't
     // accidentally resurrect the shadow after the window is closed.
     const resizeIdleId = pendingResizeUpdates.get(actor);
     if (resizeIdleId) {
@@ -309,5 +358,5 @@ function removeEffectFrom(actor: RoundedWindowActor) {
 }
 
 function isAlive(obj: any): boolean {
-    return !(obj?.is_destroyed?.());
+    return !obj?.is_destroyed?.();
 }

@@ -69,6 +69,9 @@ export function createShadow(actor: Meta.WindowActor): St.Bin {
     global.windowGroup.insert_child_below(shadow, actor);
 
     // Bind position and size from the window actor to the shadow actor.
+    // Store direct references so event_handlers can update offsets by index
+    // instead of iterating + instanceof per resize.
+    const constraints: Clutter.BindConstraint[] = [];
     for (let i = 0; i < 4; i++) {
         const constraint = new Clutter.BindConstraint({
             source: actor,
@@ -76,6 +79,13 @@ export function createShadow(actor: Meta.WindowActor): St.Bin {
             offset: 0,
         });
         shadow.add_constraint(constraint);
+        constraints.push(constraint);
+    }
+
+    // Write constraints into the provisional state.
+    const provisionalState = windowStateMap.get(actor);
+    if (provisionalState) {
+        provisionalState.shadowConstraints = constraints;
     }
 
     return shadow;
@@ -135,7 +145,21 @@ export function updateShadowActorStyle(
     borderRadius = GLOBAL_ROUNDED_CORNER_SETTINGS.borderRadius,
     shadow = FOCUSED_SHADOW,
     padding = GLOBAL_ROUNDED_CORNER_SETTINGS.padding,
-    state?: Pick<WindowEffectState, 'lastShadowStyle' | 'lastShadowStyleKey'>,
+    state?: Pick<
+        WindowEffectState,
+        | 'lastShadowStyle'
+        | 'lastShadowHidden'
+        | 'lastShadowRadius'
+        | 'lastShadowHoffset'
+        | 'lastShadowVoffset'
+        | 'lastShadowBlur'
+        | 'lastShadowSpread'
+        | 'lastShadowOpacity'
+        | 'lastShadowPadL'
+        | 'lastShadowPadR'
+        | 'lastShadowPadT'
+        | 'lastShadowPadB'
+    >,
 ): void {
     const {left, right, top, bottom} = padding;
 
@@ -152,17 +176,25 @@ export function updateShadowActorStyle(
 
     const child = actor.firstChild as St.Bin;
 
-    const hideShadow = win.maximizedHorizontally ||
-        win.maximizedVertically ||
-        win.fullscreen;
+    const hideShadow =
+        win.maximizedHorizontally || win.maximizedVertically || win.fullscreen;
 
-    const shadowStyleKey = hideShadow
-        ? `hidden|${actorStyle}`
-        : `visible|${actorStyle}|${adjustedBorderRadius}|${shadow.horizontalOffset}|${shadow.verticalOffset}|${shadow.blurOffset}|${shadow.spreadRadius}|${shadow.opacity}|${left}|${right}|${top}|${bottom}`;
-
-    // Early-exit: key matches AND the child style hasn't been overwritten externally.
+    // Early-exit: compare numeric fields directly instead of building a string key.
+    // This avoids template literal allocation + GC pressure on every call.
     if (
-        state?.lastShadowStyleKey === shadowStyleKey &&
+        state &&
+        state.lastShadowHidden === hideShadow &&
+        (hideShadow ||
+            (state.lastShadowRadius === adjustedBorderRadius &&
+                state.lastShadowHoffset === shadow.horizontalOffset &&
+                state.lastShadowVoffset === shadow.verticalOffset &&
+                state.lastShadowBlur === shadow.blurOffset &&
+                state.lastShadowSpread === shadow.spreadRadius &&
+                state.lastShadowOpacity === shadow.opacity &&
+                state.lastShadowPadL === left &&
+                state.lastShadowPadR === right &&
+                state.lastShadowPadT === top &&
+                state.lastShadowPadB === bottom)) &&
         child.style === state.lastShadowStyle
     ) {
         return;
@@ -175,14 +207,25 @@ export function updateShadowActorStyle(
            ${boxShadowCss(shadow)};
                margin: ${top}px ${right}px ${bottom}px ${left}px;`;
 
-    if (state && state.lastShadowStyle !== newChildStyle) {
-        child.style = newChildStyle;
-        state.lastShadowStyle = newChildStyle;
-        state.lastShadowStyleKey = shadowStyleKey;
-        child.queue_redraw();
-    } else if (state) {
-        state.lastShadowStyleKey = shadowStyleKey;
-    } else if (!state && child.style !== newChildStyle) {
+    if (state) {
+        if (state.lastShadowStyle !== newChildStyle) {
+            child.style = newChildStyle;
+            state.lastShadowStyle = newChildStyle;
+            child.queue_redraw();
+        }
+        // Update all cache fields
+        state.lastShadowHidden = hideShadow;
+        state.lastShadowRadius = adjustedBorderRadius;
+        state.lastShadowHoffset = shadow.horizontalOffset;
+        state.lastShadowVoffset = shadow.verticalOffset;
+        state.lastShadowBlur = shadow.blurOffset;
+        state.lastShadowSpread = shadow.spreadRadius;
+        state.lastShadowOpacity = shadow.opacity;
+        state.lastShadowPadL = left;
+        state.lastShadowPadR = right;
+        state.lastShadowPadT = top;
+        state.lastShadowPadB = bottom;
+    } else if (child.style !== newChildStyle) {
         child.style = newChildStyle;
         child.queue_redraw();
     }

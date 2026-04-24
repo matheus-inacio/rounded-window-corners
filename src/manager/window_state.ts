@@ -8,21 +8,36 @@
  * state.
  */
 
+import type Clutter from 'gi://Clutter';
 import type GObject from 'gi://GObject';
 import type Meta from 'gi://Meta';
 import type St from 'gi://St';
 import type {RoundedWindowActor} from '../utils/types.js';
 
 /** Per-window state managed by the extension for each rounded-corners actor. */
-export interface WindowEffectState {
+export type WindowEffectState = {
     shadow: St.Bin;
     unminimizedTimeoutId: number;
     propertyBindings: GObject.Binding[];
+    /** Direct references to the shadow's 4 BindConstraints (X, Y, W, H). */
+    shadowConstraints?: Clutter.BindConstraint[];
+    /** Cached Wayland shadow insets for this window (avoids re-computing wm_class each frame). */
+    cachedShadowInsets?: readonly number[] | null;
     /** Last rendered shadow CSS string — used to skip redundant style updates. */
     lastShadowStyle?: string;
-    /** Cache key for the last shadow style — avoids recomputing unchanged styles. */
-    lastShadowStyleKey?: string;
-}
+    /** Numeric cache fields for the last shadow style — avoids string key allocation. */
+    lastShadowHidden?: boolean;
+    lastShadowRadius?: number;
+    lastShadowHoffset?: number;
+    lastShadowVoffset?: number;
+    lastShadowBlur?: number;
+    lastShadowSpread?: number;
+    lastShadowOpacity?: number;
+    lastShadowPadL?: number;
+    lastShadowPadR?: number;
+    lastShadowPadT?: number;
+    lastShadowPadB?: number;
+};
 
 /**
  * Maps each managed window actor to its associated {@link WindowEffectState}.

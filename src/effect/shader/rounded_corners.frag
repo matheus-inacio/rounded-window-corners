@@ -8,16 +8,16 @@ uniform vec4 borderedAreaBounds;
 uniform float clipRadius;
 uniform float borderedAreaClipRadius;
 
-uniform bool showBorder; // Changed to bool
+uniform float showBorder;
 uniform vec2 actorSize; 
 
-// 1. Optimized squircle math
+// Optimized squircle math
 float getSquircleDist(vec2 delta) {
     vec2 dSq = delta * delta;
     return sqrt(sqrt(dot(dSq, dSq)));
 }
 
-// 2. Optimized Branchless SDF
+// Branchless rounded-rect SDF → alpha
 float getPointAlpha(vec2 p, vec4 bndInfo, float rad) {
     // bndInfo.xy is center, bndInfo.zw is halfSize
     vec2 q = abs(p - bndInfo.xy) - (bndInfo.zw - rad);
@@ -30,21 +30,14 @@ float getPointAlpha(vec2 p, vec4 bndInfo, float rad) {
 }
 
 void main() {
-    // Multiply instead of divide for better GPU performance
     vec2 p = cogl_tex_coord0_in.xy * actorSize;
 
     float pointAlpha = getPointAlpha(p, bounds, clipRadius);
+    cogl_color_out *= pointAlpha;
 
-    // 3. Dynamic toggle for borders using boolean
-    if (showBorder) {
-        float borderedAreaAlpha = getPointAlpha(p, borderedAreaBounds, borderedAreaClipRadius);
-        
-        // Inner borders
-        cogl_color_out *= pointAlpha;
-        float borderAlpha = clamp(abs(pointAlpha - borderedAreaAlpha), 0.0, 1.0);
-        cogl_color_out = mix(cogl_color_out, vec4(BORDER_COLOR.rgb, 1.0), borderAlpha * BORDER_COLOR.a);
-    } else {
-        // No borders
-        cogl_color_out *= pointAlpha;
-    }
+    // Branchless border: always compute border alpha, gate it with showBorder uniform.
+    // When showBorder == 0.0 the multiplication zeroes out the mix weight — no branch.
+    float borderedAreaAlpha = getPointAlpha(p, borderedAreaBounds, borderedAreaClipRadius);
+    float borderAlpha = clamp(abs(pointAlpha - borderedAreaAlpha), 0.0, 1.0) * showBorder;
+    cogl_color_out = mix(cogl_color_out, vec4(BORDER_COLOR.rgb, 1.0), borderAlpha * BORDER_COLOR.a);
 }
