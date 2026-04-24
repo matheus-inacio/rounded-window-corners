@@ -6,8 +6,11 @@
     "license": "GPL-3.0-or-later",
     "main": "src/extension.ts",
     "devDependencies": {
-        "@biomejs/biome": "^2.3.2",
-        "@girs/gnome-shell": "^49.0.1",
-        "typescript": "^5.7.2"
+        "@biomejs/biome": "^2.4.13",
+        "@girs/gnome-shell": "^50.0.0-alpha.1",
+        "typescript": "^6.0.3"
+    },
+    "overrides": {
+        "@girs/mtk-18": "18.0.0-4.0.0-rc.3"
     }
 }

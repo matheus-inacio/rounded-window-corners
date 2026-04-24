@@ -19,7 +19,7 @@ import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
-import type Mtk from '@girs/mtk-17';
+import type Mtk from '@girs/mtk-18';
 
 import {RoundedCornersEffect} from '../effect/rounded_corners_effect.js';
 import {ROUNDED_CORNERS_EFFECT} from '../utils/constants.js';
