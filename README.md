@@ -12,16 +12,24 @@
 
 Rounded Windows - Lite is intentionally opinionated:
 
-- Superelliptical ("squircle") corner style inspired by Apple design language
-- Performance optimizations to stay as lightweight as possible
-- Minimal surface area and fewer moving parts for easier long-term maintenance
-- No settings or customization UI; behavior is intentionally fixed and consistent
+- **Just works** — install it and every window gets smooth, rounded corners. No tweaking required.
+- **Squircle corners** — uses superelliptical curves inspired by Apple's design language instead of plain circular arcs, giving windows a softer, more natural look.
+- **Stays out of the way** — no settings panel, no preferences window, no D-Bus services running in the background. The extension does one thing and does it well.
+- **Lightweight** — the GPU shader is only 43 lines with zero branching, and redundant work is aggressively cached. You shouldn't notice it's running.
+- **Plays nice with others** — apps that already round their own corners (GTK 4 / LibAdwaita, LibHandy) are automatically detected and skipped, so you never get double-rounded windows.
+- **Easy to maintain** — small, modular codebase with minimal coupling to GNOME Shell internals, making it easier to keep up with GNOME updates.
 
 ## Why this fork exists
 
 The original extension interacts with many GNOME Shell private APIs. That makes maintenance harder over time, especially across GNOME updates.
 
 This fork aims to stay lean and straightforward by reducing complexity and avoiding extra configuration features.
+
+## Changes from upstream
+
+This fork is a significant refactor of the original extension — roughly **11,000 lines removed** and the remaining code restructured into focused modules.
+
+For a full technical breakdown (removed subsystems, shader rewrite, performance work, lifecycle fixes), see **[CHANGES.md](CHANGES.md)**.
 
 ## Installation
 
