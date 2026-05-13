@@ -66,7 +66,11 @@ class ActorSignalManager {
             const index = conns.findIndex(conn => conn.id === id);
             if (index !== -1) {
                 const conn = conns[index];
-                conn.object.disconnect(conn.id);
+                try {
+                    conn.object.disconnect(conn.id);
+                } catch {
+                    // The object may have been disposed from C code already.
+                }
                 conns.splice(index, 1);
             }
             if (conns.length === 0) {
@@ -79,7 +83,11 @@ class ActorSignalManager {
         const conns = this.connections.get(actor);
         if (conns) {
             for (const conn of conns) {
-                conn.object.disconnect(conn.id);
+                try {
+                    conn.object.disconnect(conn.id);
+                } catch {
+                    // The object may have been disposed from C code already.
+                }
             }
             this.connections.delete(actor);
         }
@@ -217,6 +225,8 @@ export function disableEffect() {
  * Throttles rapid size updates (e.g., window dragging) to a single idle frame.
  */
 function throttledResizeHandler(actor: RoundedWindowActor) {
+    if (!isAlive(actor)) return;
+
     if (actor.metaWindow && isPermanentlyIneligible(actor.metaWindow)) {
         logDebug(
             `Optimization skip triggered: Detaching signals and removing effect from ${actor.metaWindow.title}`,
@@ -244,6 +254,8 @@ function throttledResizeHandler(actor: RoundedWindowActor) {
 }
 
 function handleFocusChanged(actor: RoundedWindowActor) {
+    if (!isAlive(actor)) return;
+
     if (actor.metaWindow && isPermanentlyIneligible(actor.metaWindow)) {
         logDebug(
             `Optimization skip triggered: Detaching signals and removing effect from ${actor.metaWindow.title}`,
@@ -358,5 +370,13 @@ function removeEffectFrom(actor: RoundedWindowActor) {
 }
 
 function isAlive(obj: any): boolean {
-    return !obj?.is_destroyed?.();
+    try {
+        return !obj?.is_destroyed?.();
+    } catch {
+        // GJS throws when accessing any property on a disposed GObject.
+        // Optional chaining cannot prevent this because the proxy trap
+        // fires before `?.` can short-circuit. The thrown error itself
+        // confirms the object is dead.
+        return false;
+    }
 }
