@@ -12,7 +12,7 @@ build: clean
 
   # Copy non-JS files
   cp -r ./resources/* {{buildDir}}
-  for file in $(find src -type f ! -name "*.ts" -printf '%P\n'); do \
+  for file in $(find src -type f ! -name "*.ts" ! -name "*.md" -printf '%P\n'); do \
     path={{buildDir}}/$(dirname $file); \
     mkdir -p $path; \
     cp src/$file $path; \
