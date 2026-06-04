@@ -9,10 +9,23 @@ import Shell from 'gi://Shell';
 import {BORDER_WIDTH, GLOBAL_ROUNDED_CORNER_SETTINGS} from '../utils/config.js';
 import {readShader} from '../utils/file.js';
 
-const [declarations, code] = readShader(
-    import.meta.url,
-    'shader/rounded_corners.frag',
-);
+let shaderDeclarations: string | null = null;
+let shaderCode: string | null = null;
+
+/** Load the rounded corners shader asynchronously. Must be called before using the effect. */
+export async function loadRoundedCornersShader() {
+    if (shaderDeclarations !== null) return;
+    [shaderDeclarations, shaderCode] = await readShader(
+        import.meta.url,
+        'shader/rounded_corners.frag',
+    );
+}
+
+/** Unload the cached shader source. */
+export function unloadRoundedCornersShader() {
+    shaderDeclarations = null;
+    shaderCode = null;
+}
 
 class UniformLocations {
     bounds = -1;
@@ -52,8 +65,8 @@ export const RoundedCornersEffect = GObject.registerClass(
         vfunc_build_pipeline() {
             this.add_glsl_snippet(
                 Cogl.SnippetHook.FRAGMENT,
-                declarations,
-                code,
+                shaderDeclarations!,
+                shaderCode!,
                 false,
             );
         }

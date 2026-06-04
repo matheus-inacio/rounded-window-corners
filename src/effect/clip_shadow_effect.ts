@@ -11,10 +11,23 @@ import Shell from 'gi://Shell';
 
 import {readShader} from '../utils/file.js';
 
-const [declarations, code] = readShader(
-    import.meta.url,
-    'shader/clip_shadow.frag',
-);
+let shaderDeclarations: string | null = null;
+let shaderCode: string | null = null;
+
+/** Load the clip shadow shader asynchronously. Must be called before using the effect. */
+export async function loadClipShadowShader() {
+    if (shaderDeclarations !== null) return;
+    [shaderDeclarations, shaderCode] = await readShader(
+        import.meta.url,
+        'shader/clip_shadow.frag',
+    );
+}
+
+/** Unload the cached shader source. */
+export function unloadClipShadowShader() {
+    shaderDeclarations = null;
+    shaderCode = null;
+}
 
 export const ClipShadowEffect = GObject.registerClass(
     {
@@ -24,8 +37,8 @@ export const ClipShadowEffect = GObject.registerClass(
         vfunc_build_pipeline() {
             this.add_glsl_snippet(
                 Cogl.SnippetHook.FRAGMENT,
-                declarations,
-                code,
+                shaderDeclarations!,
+                shaderCode!,
                 false,
             );
         }

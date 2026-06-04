@@ -94,8 +94,8 @@ class ActorSignalManager {
     }
 }
 
-const globalSignals = new GlobalSignalManager();
-const actorSignals = new ActorSignalManager();
+let globalSignals: GlobalSignalManager | null = null;
+let actorSignals: ActorSignalManager | null = null;
 
 /**
  * The rounded corners effect has to perform some actions when different events
@@ -105,7 +105,15 @@ const actorSignals = new ActorSignalManager();
  * The `enableEffect` method handles this by attaching the necessary signals
  * to matching handlers on each effect.
  */
-export function enableEffect() {
+export async function enableEffect() {
+    // Import and load shaders asynchronously (EGO-X-004)
+    const {loadClipShadowShader} = await import('../effect/clip_shadow_effect.js');
+    const {loadRoundedCornersShader} = await import('../effect/rounded_corners_effect.js');
+    await Promise.all([loadClipShadowShader(), loadRoundedCornersShader()]);
+
+    globalSignals = new GlobalSignalManager();
+    actorSignals = new ActorSignalManager();
+
     const wm = global.windowManager;
 
     // Add the effect to all windows when the extension is enabled.
@@ -218,7 +226,9 @@ export function disableEffect() {
         removeEffectFrom(actor as RoundedWindowActor);
     }
 
-    globalSignals.disconnectAll();
+    globalSignals?.disconnectAll();
+    globalSignals = null;
+    actorSignals = null;
 }
 
 /**
@@ -278,12 +288,12 @@ function applyEffectTo(actor: RoundedWindowActor) {
     }
 
     if (!actor.firstChild) {
-        const signalId = actorSignals.connect(
+        const signalId = actorSignals!.connect(
             actor,
             actor,
             'notify::first-child',
             () => {
-                actorSignals.disconnect(actor, signalId);
+                actorSignals!.disconnect(actor, signalId);
                 applyEffectTo(actor);
             },
         );
@@ -310,7 +320,7 @@ function applyEffectTo(actor: RoundedWindowActor) {
     // --- FIX: Prevent GC Sweep Crashes on MetaShapedTexture ---
     // If the texture is replaced or destroyed, we must proactively disconnect
     // its signals before the garbage collector sweeps it.
-    actorSignals.connect(actor, actor, 'notify::first-child', () => {
+    actorSignals!.connect(actor, actor, 'notify::first-child', () => {
         if (actor.get_texture() !== texture) {
             removeEffectFrom(actor);
             applyEffectTo(actor);
@@ -323,31 +333,31 @@ function applyEffectTo(actor: RoundedWindowActor) {
     // that? I have no idea. But without that, weird bugs can happen. For
     // example, when using Dash to Dock, all opened windows will be invisible
     // *unless they are pinned in the dock*. So yeah, GNOME is magic.
-    actorSignals.connect(actor, actor, 'notify::size', () =>
+    actorSignals!.connect(actor, actor, 'notify::size', () =>
         throttledResizeHandler(actor),
     );
-    actorSignals.connect(actor, texture, 'size-changed', () =>
+    actorSignals!.connect(actor, texture, 'size-changed', () =>
         throttledResizeHandler(actor),
     );
 
     // Get notified about fullscreen explicitly, since a window must not change in
     // size to go fullscreen
-    actorSignals.connect(actor, metaWindow, 'notify::fullscreen', () =>
+    actorSignals!.connect(actor, metaWindow, 'notify::fullscreen', () =>
         throttledResizeHandler(actor),
     );
 
     // Focus / Workspace changes
-    actorSignals.connect(actor, metaWindow, 'notify::appears-focused', () =>
+    actorSignals!.connect(actor, metaWindow, 'notify::appears-focused', () =>
         handleFocusChanged(actor),
     );
 
     // Workspace or monitor of the window changed.
-    actorSignals.connect(actor, metaWindow, 'workspace-changed', () =>
+    actorSignals!.connect(actor, metaWindow, 'workspace-changed', () =>
         handleFocusChanged(actor),
     );
 
     // Parent actor destruction covers normal window closing
-    actorSignals.connect(actor, actor, 'destroy', () =>
+    actorSignals!.connect(actor, actor, 'destroy', () =>
         removeEffectFrom(actor),
     );
 
@@ -365,7 +375,7 @@ function removeEffectFrom(actor: RoundedWindowActor) {
         pendingResizeUpdates.delete(actor);
     }
 
-    actorSignals.disconnectAll(actor);
+    actorSignals?.disconnectAll(actor);
     handlers.onRemoveEffect(actor);
 }
 

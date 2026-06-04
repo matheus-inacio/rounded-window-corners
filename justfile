@@ -10,6 +10,9 @@ build: clean
   npm install
   npx tsc --outDir {{buildDir}}
 
+  # Remove type-only JS files that compile to empty 'export {}' stubs (EGO-P-007)
+  grep -rlx 'export {};' {{buildDir}} --include='*.js' | xargs -r rm -f
+
   # Copy non-JS files
   cp -r ./resources/* {{buildDir}}
   for file in $(find src -type f ! -name "*.ts" ! -name "*.md" -printf '%P\n'); do \
