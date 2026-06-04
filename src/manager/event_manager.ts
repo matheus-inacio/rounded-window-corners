@@ -6,21 +6,22 @@
 import type GObject from 'gi://GObject';
 import type Meta from 'gi://Meta';
 import type Shell from 'gi://Shell';
-import type {RoundedWindowActor} from '../utils/types.js';
+import type { RoundedWindowActor } from '../utils/types.js';
 
 import GLib from 'gi://GLib';
 
-import {logDebug} from '../utils/log.js';
-import {isPermanentlyIneligible} from './eligibility.js';
+import { logDebug } from '../utils/log.js';
+import { isPermanentlyIneligible } from './eligibility.js';
 import * as handlers from './event_handlers.js';
 
 const pendingEffectApplications = new WeakMap<Meta.WindowActor, number>();
 const pendingResizeUpdates = new WeakMap<RoundedWindowActor, number>();
 const pendingWmClassListeners = new WeakMap<Meta.Window, number>();
 const initializedActors = new WeakSet<RoundedWindowActor>();
+const destroyedActors = new WeakSet<Meta.WindowActor>();
 
 class GlobalSignalManager {
-    private connections: {object: GObject.Object; id: number}[] = [];
+    private connections: { object: GObject.Object; id: number }[] = [];
 
     connect(
         object: GObject.Object,
@@ -44,7 +45,7 @@ class GlobalSignalManager {
 class ActorSignalManager {
     private connections = new WeakMap<
         RoundedWindowActor | Meta.WindowActor,
-        {object: GObject.Object; id: number}[]
+        { object: GObject.Object; id: number }[]
     >();
 
     connect(
@@ -55,7 +56,7 @@ class ActorSignalManager {
     ): number {
         const id = object.connect(signal, callback);
         const conns = this.connections.get(actor) || [];
-        conns.push({object, id});
+        conns.push({ object, id });
         this.connections.set(actor, conns);
         return id;
     }
@@ -107,8 +108,8 @@ let actorSignals: ActorSignalManager | null = null;
  */
 export async function enableEffect() {
     // Import and load shaders asynchronously (EGO-X-004)
-    const {loadClipShadowShader} = await import('../effect/clip_shadow_effect.js');
-    const {loadRoundedCornersShader} = await import('../effect/rounded_corners_effect.js');
+    const { loadClipShadowShader } = await import('../effect/clip_shadow_effect.js');
+    const { loadRoundedCornersShader } = await import('../effect/rounded_corners_effect.js');
     await Promise.all([loadClipShadowShader(), loadRoundedCornersShader()]);
 
     globalSignals = new GlobalSignalManager();
@@ -182,6 +183,11 @@ export async function enableEffect() {
         wm,
         'destroy',
         (_: Shell.WM, actor: Meta.WindowActor) => {
+            // Mark the actor as dead immediately so any pending idle
+            // callbacks can bail out via the fast-path in isAlive()
+            // without touching the disposed GObject.
+            destroyedActors.add(actor);
+
             const win = actor.metaWindow;
 
             // Clean up the wm-class listener if the window is destroyed before the class resolves
@@ -357,9 +363,10 @@ function applyEffectTo(actor: RoundedWindowActor) {
     );
 
     // Parent actor destruction covers normal window closing
-    actorSignals!.connect(actor, actor, 'destroy', () =>
-        removeEffectFrom(actor),
-    );
+    actorSignals!.connect(actor, actor, 'destroy', () => {
+        destroyedActors.add(actor);
+        removeEffectFrom(actor);
+    });
 
     handlers.onAddEffect(actor);
 }
@@ -380,6 +387,13 @@ function removeEffectFrom(actor: RoundedWindowActor) {
 }
 
 function isAlive(obj: any): boolean {
+    // Fast-path: if we already know this object has been destroyed via our
+    // own bookkeeping, avoid touching the GObject at all.  This prevents GJS
+    // from logging a noisy "Object … has been already disposed" warning to
+    // the system journal even though the exception would be caught below.
+    if (destroyedActors.has(obj)) {
+        return false;
+    }
     try {
         return !obj?.is_destroyed?.();
     } catch {
