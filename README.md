@@ -1,6 +1,6 @@
 <div align="center">
   <h1>Rounded Windows - Lite</h1>
-  <p><i>An opinionated GNOME extension for lightweight, squircle-style window corners</i></p>
+  <p><i>An opinionated GNOME extension for lightweight, native-like window corners</i></p>
   <img src="Preview.png" alt="Preview" />
 </div>
 <br>
@@ -12,12 +12,12 @@
 
 Rounded Windows - Lite is intentionally opinionated:
 
-- **Just works** — install it and every window gets smooth, rounded corners. No tweaking required.
-- **Squircle corners** — uses superelliptical curves inspired by Apple's design language instead of plain circular arcs, giving windows a softer, more natural look.
-- **Stays out of the way** — no settings panel, no preferences window, no D-Bus services running in the background. The extension does one thing and does it well.
-- **Lightweight** — the GPU shader is only 43 lines with zero branching, and redundant work is aggressively cached. You shouldn't notice it's running.
-- **Plays nice with others** — apps that already round their own corners (GTK 4 / LibAdwaita, LibHandy) are automatically detected and skipped, so you never get double-rounded windows.
-- **Easy to maintain** — small, modular codebase with minimal coupling to GNOME Shell internals, making it easier to keep up with GNOME updates.
+- **Just works** - install it and every window gets smooth, rounded corners. No tweaking required.
+- **Native GTK4 look** - rounds window corners just like native GTK4 windows on GNOME, providing a seamless and consistent experience.
+- **Stays out of the way** - no settings panel, no preferences window, no D-Bus services running in the background. The extension does one thing and does it well.
+- **Lightweight** - the GPU shader is only 43 lines with zero branching, and redundant work is aggressively cached. You shouldn't notice it's running.
+- **Plays nice with others** - apps that already round their own corners (GTK 4 / LibAdwaita, LibHandy) are automatically detected and skipped, so you never get double-rounded windows.
+- **Easy to maintain** - small, modular codebase with minimal coupling to GNOME Shell internals, making it easier to keep up with GNOME updates.
 
 ## Why this fork exists
 
@@ -27,7 +27,7 @@ This fork aims to stay lean and straightforward by reducing complexity and avoid
 
 ## Changes from upstream
 
-This fork is a significant refactor of the original extension — roughly **11,000 lines removed** and the remaining code restructured into focused modules.
+This fork is a significant refactor of the original extension - roughly **11,000 lines removed** and the remaining code restructured into focused modules.
 
 For a full technical breakdown (removed subsystems, shader rewrite, performance work, lifecycle fixes), see **[CHANGES.md](CHANGES.md)**.
 
@@ -35,8 +35,8 @@ For a full technical breakdown (removed subsystems, shader rewrite, performance 
 
 ### From Gnome Extensions
 
-> [!WARNING]
-> This extension is still in development and is not published on extensions.gnome.org.
+> [!NOTE]
+> This extension is not yet published on extensions.gnome.org.
 
 ### From source code
 
