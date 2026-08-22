@@ -10,6 +10,7 @@ import type Clutter from 'gi://Clutter';
 import type {RoundedCornersEffect} from '../effect/rounded_corners_effect.js';
 
 import Meta from 'gi://Meta';
+
 import {ROUNDED_CORNERS_EFFECT} from '../utils/constants.js';
 
 // Weird TypeScript magic :)

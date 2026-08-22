@@ -7,10 +7,10 @@
 
 import type GObject from 'gi://GObject';
 import type Meta from 'gi://Meta';
-import type { RoundedWindowActor } from '../utils/types.js';
+import type {RoundedWindowActor} from '../utils/types.js';
 
 export class GlobalSignalManager {
-    private connections: { object: GObject.Object; id: number }[] = [];
+    private connections: {object: GObject.Object; id: number}[] = [];
 
     connect(
         object: GObject.Object,
@@ -34,7 +34,7 @@ export class GlobalSignalManager {
 export class ActorSignalManager {
     private connections = new WeakMap<
         RoundedWindowActor | Meta.WindowActor,
-        { object: GObject.Object; id: number }[]
+        {object: GObject.Object; id: number}[]
     >();
 
     connect(
@@ -45,7 +45,7 @@ export class ActorSignalManager {
     ): number {
         const id = object.connect(signal, callback);
         const conns = this.connections.get(actor) || [];
-        conns.push({ object, id });
+        conns.push({object, id});
         this.connections.set(actor, conns);
         return id;
     }

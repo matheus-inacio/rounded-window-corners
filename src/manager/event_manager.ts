@@ -10,12 +10,12 @@
 
 import type Meta from 'gi://Meta';
 import type Shell from 'gi://Shell';
-import type { RoundedWindowActor } from '../utils/types.js';
+import type {RoundedWindowActor} from '../utils/types.js';
 
-import { logDebug } from '../utils/log.js';
+import {logDebug} from '../utils/log.js';
 import * as tracker from './actor_tracker.js';
 import * as handlers from './event_handlers.js';
-import { GlobalSignalManager } from './signal_manager.js';
+import {GlobalSignalManager} from './signal_manager.js';
 
 let globalSignals: GlobalSignalManager | null = null;
 
@@ -29,8 +29,12 @@ let globalSignals: GlobalSignalManager | null = null;
  */
 export async function enableEffect() {
     // Import and load shaders asynchronously (EGO-X-004)
-    const { loadClipShadowShader } = await import('../effect/clip_shadow_effect.js');
-    const { loadRoundedCornersShader } = await import('../effect/rounded_corners_effect.js');
+    const {loadClipShadowShader} = await import(
+        '../effect/clip_shadow_effect.js'
+    );
+    const {loadRoundedCornersShader} = await import(
+        '../effect/rounded_corners_effect.js'
+    );
     await Promise.all([loadClipShadowShader(), loadRoundedCornersShader()]);
 
     globalSignals = new GlobalSignalManager();

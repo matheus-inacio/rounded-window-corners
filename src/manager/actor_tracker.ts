@@ -8,14 +8,14 @@
  */
 
 import type Meta from 'gi://Meta';
-import type { RoundedWindowActor } from '../utils/types.js';
+import type {RoundedWindowActor} from '../utils/types.js';
 
 import GLib from 'gi://GLib';
 
-import { logDebug } from '../utils/log.js';
-import { isPermanentlyIneligible } from './eligibility.js';
+import {logDebug} from '../utils/log.js';
+import {isPermanentlyIneligible} from './eligibility.js';
 import * as handlers from './event_handlers.js';
-import { ActorSignalManager } from './signal_manager.js';
+import {ActorSignalManager} from './signal_manager.js';
 
 // ---------------------------------------------------------------------------
 // Per-actor tracking state

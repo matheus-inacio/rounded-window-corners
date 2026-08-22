@@ -8,10 +8,9 @@
  * the extension.
  */
 
-import Meta from 'gi://Meta';
-
-import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import Meta from 'gi://Meta';
 
 import {
     BLACKLIST,
@@ -89,10 +88,11 @@ export function isPermanentlyIneligible(
         return true;
     }
 
-    if (win._appType !== undefined) {
-        if (_skipForLibToolkit(win._appType, isException)) {
-            return true;
-        }
+    if (
+        win._appType !== undefined &&
+        _skipForLibToolkit(win._appType, isException)
+    ) {
+        return true;
     }
 
     return false;
@@ -152,9 +152,7 @@ function _skipForLibToolkit(appType: AppType, isException: boolean): boolean {
     return appType === 'LibAdwaita' || appType === 'LibHandy';
 }
 
-function _roundedCornersAllowedForWindowState(
-    win: Meta.Window
-): boolean {
+function _roundedCornersAllowedForWindowState(win: Meta.Window): boolean {
     const maximized = win.maximizedHorizontally || win.maximizedVertically;
     const fullscreen = win.fullscreen;
     const cfg = GLOBAL_ROUNDED_CORNER_SETTINGS;
@@ -195,9 +193,7 @@ async function getAppTypeAsync(win: Meta.Window): Promise<AppType> {
     }
 
     const pid = win.get_pid();
-    logDebug(
-        `Detecting app type for "${wmClass}" (pid ${pid}) via map_files…`,
-    );
+    logDebug(`Detecting app type for "${wmClass}" (pid ${pid}) via map_files…`);
 
     const appType = await _detectFromMapFiles(pid).catch(e => {
         logDebug(
@@ -322,11 +318,13 @@ function _detectFromMapFiles(pid: number): Promise<AppType> {
  */
 function _detectFromMaps(pid: number): Promise<AppType> {
     // Longest needle is 'libadwaita-1.so' (16 chars); overlap = 16 - 1 = 15.
-    const CHUNK_SIZE = 16 * 1024;
-    const OVERLAP = 'libadwaita-1.so'.length - 1;
+    const ChunkSize = 16 * 1024;
+    const Overlap = 'libadwaita-1.so'.length - 1;
 
     return new Promise(resolve => {
-        logDebug(`maps[pid ${pid}]: opening /proc/${pid}/maps for chunked read`);
+        logDebug(
+            `maps[pid ${pid}]: opening /proc/${pid}/maps for chunked read`,
+        );
         const file = Gio.File.new_for_path(`/proc/${pid}/maps`);
 
         file.read_async(GLib.PRIORITY_LOW, null, (_src, openRes) => {
@@ -345,7 +343,7 @@ function _detectFromMaps(pid: number): Promise<AppType> {
 
             const readChunk = () => {
                 stream.read_bytes_async(
-                    CHUNK_SIZE,
+                    ChunkSize,
                     GLib.PRIORITY_LOW,
                     null,
                     (_s, chunkRes) => {
@@ -391,8 +389,8 @@ function _detectFromMaps(pid: number): Promise<AppType> {
                             }
 
                             tail =
-                                chunk.length >= OVERLAP
-                                    ? chunk.slice(-OVERLAP)
+                                chunk.length >= Overlap
+                                    ? chunk.slice(-Overlap)
                                     : chunk;
                             readChunk();
                         } catch (e) {

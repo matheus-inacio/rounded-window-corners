@@ -1,11 +1,11 @@
-import type { Bounds } from '../utils/types.js';
+import type {Bounds} from '../utils/types.js';
 
 import Cogl from 'gi://Cogl';
 import GObject from 'gi://GObject';
 import Shell from 'gi://Shell';
 
-import { BORDER_WIDTH, GLOBAL_ROUNDED_CORNER_SETTINGS } from '../utils/config.js';
-import { readShader } from '../utils/file.js';
+import {BORDER_WIDTH, GLOBAL_ROUNDED_CORNER_SETTINGS} from '../utils/config.js';
+import {readShader} from '../utils/file.js';
 
 let shaderDeclarations: string | null = null;
 let shaderCode: string | null = null;
@@ -48,7 +48,12 @@ export const RoundedCornersEffect = GObject.registerClass(
         #lastBounds = [Number.NaN, Number.NaN, Number.NaN, Number.NaN];
         #lastRadius = Number.NaN;
         #lastShowBorder = Number.NaN;
-        #lastBorderedAreaBounds = [Number.NaN, Number.NaN, Number.NaN, Number.NaN];
+        #lastBorderedAreaBounds = [
+            Number.NaN,
+            Number.NaN,
+            Number.NaN,
+            Number.NaN,
+        ];
         #lastBorderedAreaRadius = Number.NaN;
         #lastActorSize = [Number.NaN, Number.NaN];
 
@@ -67,7 +72,7 @@ export const RoundedCornersEffect = GObject.registerClass(
         updateUniforms(windowBounds: Bounds, showBorder: boolean) {
             const showBorderFlag = showBorder ? 1 : 0;
             const outerRadius = GLOBAL_ROUNDED_CORNER_SETTINGS.borderRadius;
-            const { padding } = GLOBAL_ROUNDED_CORNER_SETTINGS;
+            const {padding} = GLOBAL_ROUNDED_CORNER_SETTINGS;
 
             const x1 = windowBounds.x1 + padding.left;
             const y1 = windowBounds.y1 + padding.top;
@@ -87,7 +92,10 @@ export const RoundedCornersEffect = GObject.registerClass(
             this.#borderedAreaBounds[0] = centerX;
             this.#borderedAreaBounds[1] = centerY;
             this.#borderedAreaBounds[2] = Math.max(halfWidth - BORDER_WIDTH, 0);
-            this.#borderedAreaBounds[3] = Math.max(halfHeight - BORDER_WIDTH, 0);
+            this.#borderedAreaBounds[3] = Math.max(
+                halfHeight - BORDER_WIDTH,
+                0,
+            );
 
             let borderedAreaRadius = Math.max(outerRadius - BORDER_WIDTH, 0.0);
 
@@ -152,9 +160,21 @@ export const RoundedCornersEffect = GObject.registerClass(
             this.#borderedAreaRadiusUniform[0] = borderedAreaRadius;
 
             this.set_uniform_float(uniforms.clipRadius, 1, this.#clipRadius);
-            this.set_uniform_float(uniforms.showBorder, 1, this.#showBorderUniform);
-            this.set_uniform_float(uniforms.borderedAreaBounds, 4, borderedAreaBounds);
-            this.set_uniform_float(uniforms.borderedAreaClipRadius, 1, this.#borderedAreaRadiusUniform);
+            this.set_uniform_float(
+                uniforms.showBorder,
+                1,
+                this.#showBorderUniform,
+            );
+            this.set_uniform_float(
+                uniforms.borderedAreaBounds,
+                4,
+                borderedAreaBounds,
+            );
+            this.set_uniform_float(
+                uniforms.borderedAreaClipRadius,
+                1,
+                this.#borderedAreaRadiusUniform,
+            );
             this.set_uniform_float(uniforms.actorSize, 2, actorSize);
 
             copyFloat4(this.#lastBounds, bounds);
@@ -175,8 +195,11 @@ export const RoundedCornersEffect = GObject.registerClass(
             uniforms.bounds = this.get_uniform_location('bounds');
             uniforms.clipRadius = this.get_uniform_location('clipRadius');
             uniforms.showBorder = this.get_uniform_location('showBorder');
-            uniforms.borderedAreaBounds = this.get_uniform_location('borderedAreaBounds');
-            uniforms.borderedAreaClipRadius = this.get_uniform_location('borderedAreaClipRadius');
+            uniforms.borderedAreaBounds =
+                this.get_uniform_location('borderedAreaBounds');
+            uniforms.borderedAreaClipRadius = this.get_uniform_location(
+                'borderedAreaClipRadius',
+            );
             uniforms.actorSize = this.get_uniform_location('actorSize');
 
             const ready =

@@ -2,10 +2,7 @@
  * @file Hardcoded extension configuration (former GSettings defaults).
  */
 
-import type {
-    BoxShadow,
-    RoundedCornerSettings,
-} from './types.js';
+import type {BoxShadow, RoundedCornerSettings} from './types.js';
 
 /** Former `global-rounded-corner-settings` default. */
 export const GLOBAL_ROUNDED_CORNER_SETTINGS: RoundedCornerSettings = {

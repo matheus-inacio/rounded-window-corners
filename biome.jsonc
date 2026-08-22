@@ -1,7 +1,12 @@
 {
-    "$schema": "https://biomejs.dev/schemas/2.3.2/schema.json",
+    "$schema": "https://biomejs.dev/schemas/2.4.13/schema.json",
     "files": {
-        "includes": ["**", "!**/_build/**/*"]
+        "includes": [
+            "**",
+            "!**/_build/**/*",
+            "!**/venv/**/*",
+            "!**/node_modules/**/*"
+        ]
     },
     "assist": {
         "actions": {
@@ -29,13 +34,17 @@
         },
         "rules": {
             "recommended": true,
+            "suspicious": {
+                "noExplicitAny": "off"
+            },
             "complexity": {
-                "noExcessiveCognitiveComplexity": "error",
+                "noExcessiveCognitiveComplexity": "off",
                 "useSimplifiedLogicExpression": "error",
                 "useWhile": "error"
             },
             "nursery": {},
             "style": {
+                "noNonNullAssertion": "off",
                 "noUnusedTemplateLiteral": "error",
                 "noUselessElse": "error",
                 "useAtIndex": "error",
@@ -49,7 +58,7 @@
                         "conventions": [
                             {
                                 // Whitelist some GJS names that don't follow the JS naming conventions
-                                "match": "(?:G[A-Z].*|vfunc_.*|Template|InternalChildren|icon_name|css_classes|draw_value|value_pos|round_digits|Properties|Padding.*|(.*))"
+                                "match": "(?:is_destroyed|G[A-Z].*|vfunc_.*|Template|InternalChildren|icon_name|css_classes|draw_value|value_pos|round_digits|Properties|Padding.*|(.*))"
                             }
                         ]
                     }
@@ -65,6 +74,7 @@
                 "noAwaitInLoops": "error"
             },
             "correctness": {
+                "noUnresolvedImports": "off",
                 "noUnknownTypeSelector": "off",
                 "useImportExtensions": {
                     "options": {

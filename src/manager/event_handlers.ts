@@ -13,21 +13,18 @@
  *  - {@link window_state.ts}  — shared runtime state
  */
 
+import type Clutter from 'gi://Clutter';
+import type St from 'gi://St';
+import type Mtk from '@girs/mtk-18';
 import type {RoundedWindowActor} from '../utils/types.js';
 
-import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
-import St from 'gi://St';
-import type Mtk from '@girs/mtk-18';
 
 import {RoundedCornersEffect} from '../effect/rounded_corners_effect.js';
 import {ROUNDED_CORNERS_EFFECT} from '../utils/constants.js';
 import {logDebug} from '../utils/log.js';
-import {
-    getRoundedCornersEffect,
-    unwrapActor,
-} from './actor_helpers.js';
+import {getRoundedCornersEffect, unwrapActor} from './actor_helpers.js';
 import {shouldEnableEffect} from './eligibility.js';
 import {
     computeBounds,
@@ -42,13 +39,22 @@ import {managedActors, windowStateMap} from './window_state.js';
 // ---------------------------------------------------------------------------
 
 export function onAddEffect(actor: RoundedWindowActor): void {
-    logDebug(`Adding effect to ${actor?.metaWindow.title}`);
+    const win = actor?.metaWindow;
+    if (!win) {
+        logDebug('Skipping effect addition: actor has no metaWindow');
+        return;
+    }
 
-    const win = actor.metaWindow;
+    logDebug(`Adding effect to ${win.title}`);
 
     // 1. Guard against 0x0 or invalid Wine/Proton windows
     const frameRect = win.get_frame_rect();
-    if (frameRect.width <= 0 || frameRect.height <= 0 || actor.width <= 0 || actor.height <= 0) {
+    if (
+        frameRect.width <= 0 ||
+        frameRect.height <= 0 ||
+        actor.width <= 0 ||
+        actor.height <= 0
+    ) {
         logDebug(`Skipping ${win.title}: Invalid geometry (0x0)`);
         return;
     }
@@ -227,10 +233,7 @@ export function onRestacked(): void {
         }
 
         if (actor.get_previous_sibling() !== state.shadow) {
-            global.windowGroup.set_child_below_sibling(
-                state.shadow,
-                actor,
-            );
+            global.windowGroup.set_child_below_sibling(state.shadow, actor);
         }
     }
 }
@@ -248,12 +251,18 @@ export {refreshShadow as onFocusChanged};
  */
 function refreshRoundedCorners(
     actor: RoundedWindowActor,
-    prefetchedFrameRect?: Mtk.Rectangle): void {
+    prefetchedFrameRect?: Mtk.Rectangle,
+): void {
     const win = actor.metaWindow;
     if (!win) return;
 
     const frameRect = prefetchedFrameRect ?? win.get_frame_rect();
-    if (frameRect.width <= 0 || frameRect.height <= 0 || actor.width <= 0 || actor.height <= 0) {
+    if (
+        frameRect.width <= 0 ||
+        frameRect.height <= 0 ||
+        actor.width <= 0 ||
+        actor.height <= 0
+    ) {
         logDebug(`Skipping ${win.title}: Invalid geometry (0x0)`);
         return;
     }
