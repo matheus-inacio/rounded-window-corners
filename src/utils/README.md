@@ -7,10 +7,6 @@ the codebase, so they can't be put anywhere else.
 
 Handles adding and removing the RWC settings item in the desktop context menu.
 
-## `box_shadow.ts`
-
-Contains a function for converting box shadow JS objects into CSS styles for
-those shadows.
 
 ## `constants.ts`
 

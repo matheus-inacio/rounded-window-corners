@@ -1,10 +1,12 @@
-import type {Bounds} from '../utils/types.js';
+import type {Bounds, BoxShadow} from '../utils/types.js';
 
 import Cogl from 'gi://Cogl';
 import GObject from 'gi://GObject';
 import Shell from 'gi://Shell';
+import Clutter from 'gi://Clutter';
 
 import {BORDER_WIDTH, GLOBAL_ROUNDED_CORNER_SETTINGS} from '../utils/config.js';
+import {SHADOW_PADDING} from '../utils/constants.js';
 import {readShader} from '../utils/file.js';
 
 let shaderDeclarations: string | null = null;
@@ -15,7 +17,7 @@ export async function loadRoundedCornersShader() {
 
     [shaderDeclarations, shaderCode] = await readShader(
         import.meta.url,
-        'shader/rounded_corners.frag',
+        'rounded_corners.frag',
     );
 }
 
@@ -31,6 +33,10 @@ class UniformLocations {
     borderedAreaBounds = -1;
     borderedAreaClipRadius = -1;
     actorSize = -1;
+    shadowOffset = -1;
+    shadowBlur = -1;
+    shadowSpread = -1;
+    shadowOpacity = -1;
 }
 
 export const RoundedCornersEffect = GObject.registerClass(
@@ -44,6 +50,10 @@ export const RoundedCornersEffect = GObject.registerClass(
         #clipRadius = [0];
         #showBorderUniform = [0];
         #borderedAreaRadiusUniform = [0];
+        #shadowOffsetUniform = [0, 0, 0, 0, 0, 0];
+        #shadowBlurUniform = [0, 0, 0];
+        #shadowSpreadUniform = [0, 0, 0];
+        #shadowOpacityUniform = [0, 0, 0];
 
         #lastBounds = [Number.NaN, Number.NaN, Number.NaN, Number.NaN];
         #lastRadius = Number.NaN;
@@ -56,6 +66,10 @@ export const RoundedCornersEffect = GObject.registerClass(
         ];
         #lastBorderedAreaRadius = Number.NaN;
         #lastActorSize = [Number.NaN, Number.NaN];
+        #lastShadowOffset = [Number.NaN, Number.NaN, Number.NaN, Number.NaN, Number.NaN, Number.NaN];
+        #lastShadowBlur = [Number.NaN, Number.NaN, Number.NaN];
+        #lastShadowSpread = [Number.NaN, Number.NaN, Number.NaN];
+        #lastShadowOpacity = [Number.NaN, Number.NaN, Number.NaN];
 
         #uniformLocations = new UniformLocations();
         #uniformsCached = false;
@@ -69,7 +83,23 @@ export const RoundedCornersEffect = GObject.registerClass(
             );
         }
 
-        updateUniforms(windowBounds: Bounds, showBorder: boolean) {
+        vfunc_modify_paint_volume(volume: Clutter.PaintVolume): boolean {
+            const padding = SHADOW_PADDING;
+
+            const origin = volume.get_origin();
+            if (origin) {
+                origin.x -= padding;
+                origin.y -= padding;
+                volume.set_origin(origin);
+            }
+
+            volume.set_width(volume.get_width() + padding * 2);
+            volume.set_height(volume.get_height() + padding * 2);
+
+            return true;
+        }
+
+        updateUniforms(windowBounds: Bounds, showBorder: boolean, shadowSettings: BoxShadow[]) {
             const showBorderFlag = showBorder ? 1 : 0;
             const outerRadius = GLOBAL_ROUNDED_CORNER_SETTINGS.borderRadius;
             const {padding} = GLOBAL_ROUNDED_CORNER_SETTINGS;
@@ -127,6 +157,7 @@ export const RoundedCornersEffect = GObject.registerClass(
                 this.#borderedAreaBounds,
                 borderedAreaRadius,
                 this.#actorSize,
+                shadowSettings
             );
         }
 
@@ -137,14 +168,28 @@ export const RoundedCornersEffect = GObject.registerClass(
             borderedAreaBounds: number[],
             borderedAreaRadius: number,
             actorSize: number[],
+            shadowSettings: BoxShadow[]
         ) {
+            const sOffset = [
+                shadowSettings[0].horizontalOffset, shadowSettings[0].verticalOffset,
+                shadowSettings[1].horizontalOffset, shadowSettings[1].verticalOffset,
+                shadowSettings[2].horizontalOffset, shadowSettings[2].verticalOffset
+            ];
+            const sBlur = [shadowSettings[0].blurOffset, shadowSettings[1].blurOffset, shadowSettings[2].blurOffset];
+            const sSpread = [shadowSettings[0].spreadRadius, shadowSettings[1].spreadRadius, shadowSettings[2].spreadRadius];
+            const sOpacity = [shadowSettings[0].opacity, shadowSettings[1].opacity, shadowSettings[2].opacity];
+            
             if (
                 this.#lastRadius === radius &&
                 this.#lastShowBorder === showBorderFlag &&
                 this.#lastBorderedAreaRadius === borderedAreaRadius &&
                 float4Equal(this.#lastBounds, bounds) &&
                 float4Equal(this.#lastBorderedAreaBounds, borderedAreaBounds) &&
-                float2Equal(this.#lastActorSize, actorSize)
+                float2Equal(this.#lastActorSize, actorSize) &&
+                floatArrayEqual(this.#lastShadowOffset, sOffset) &&
+                floatArrayEqual(this.#lastShadowBlur, sBlur) &&
+                floatArrayEqual(this.#lastShadowSpread, sSpread) &&
+                floatArrayEqual(this.#lastShadowOpacity, sOpacity)
             ) {
                 return;
             }
@@ -176,14 +221,42 @@ export const RoundedCornersEffect = GObject.registerClass(
                 this.#borderedAreaRadiusUniform,
             );
             this.set_uniform_float(uniforms.actorSize, 2, actorSize);
+            
+            this.#shadowOffsetUniform[0] = sOffset[0];
+            this.#shadowOffsetUniform[1] = sOffset[1];
+            this.#shadowOffsetUniform[2] = sOffset[2];
+            this.#shadowOffsetUniform[3] = sOffset[3];
+            this.#shadowOffsetUniform[4] = sOffset[4];
+            this.#shadowOffsetUniform[5] = sOffset[5];
+
+            this.#shadowBlurUniform[0] = sBlur[0];
+            this.#shadowBlurUniform[1] = sBlur[1];
+            this.#shadowBlurUniform[2] = sBlur[2];
+
+            this.#shadowSpreadUniform[0] = sSpread[0];
+            this.#shadowSpreadUniform[1] = sSpread[1];
+            this.#shadowSpreadUniform[2] = sSpread[2];
+
+            this.#shadowOpacityUniform[0] = sOpacity[0];
+            this.#shadowOpacityUniform[1] = sOpacity[1];
+            this.#shadowOpacityUniform[2] = sOpacity[2];
+            
+            this.set_uniform_float(uniforms.shadowOffset, 2, this.#shadowOffsetUniform);
+            this.set_uniform_float(uniforms.shadowBlur, 1, this.#shadowBlurUniform);
+            this.set_uniform_float(uniforms.shadowSpread, 1, this.#shadowSpreadUniform);
+            this.set_uniform_float(uniforms.shadowOpacity, 1, this.#shadowOpacityUniform);
 
             copyFloat4(this.#lastBounds, bounds);
             copyFloat4(this.#lastBorderedAreaBounds, borderedAreaBounds);
             copyFloat2(this.#lastActorSize, actorSize);
+            copyFloatArray(this.#lastShadowOffset, sOffset);
 
             this.#lastRadius = radius;
             this.#lastShowBorder = showBorderFlag;
             this.#lastBorderedAreaRadius = borderedAreaRadius;
+            copyFloatArray(this.#lastShadowBlur, sBlur);
+            copyFloatArray(this.#lastShadowSpread, sSpread);
+            copyFloatArray(this.#lastShadowOpacity, sOpacity);
 
             this.queue_repaint();
         }
@@ -201,6 +274,10 @@ export const RoundedCornersEffect = GObject.registerClass(
                 'borderedAreaClipRadius',
             );
             uniforms.actorSize = this.get_uniform_location('actorSize');
+            uniforms.shadowOffset = this.get_uniform_location('shadowOffset');
+            uniforms.shadowBlur = this.get_uniform_location('shadowBlur');
+            uniforms.shadowSpread = this.get_uniform_location('shadowSpread');
+            uniforms.shadowOpacity = this.get_uniform_location('shadowOpacity');
 
             const ready =
                 uniforms.bounds >= 0 &&
@@ -208,7 +285,11 @@ export const RoundedCornersEffect = GObject.registerClass(
                 uniforms.showBorder >= 0 &&
                 uniforms.borderedAreaBounds >= 0 &&
                 uniforms.borderedAreaClipRadius >= 0 &&
-                uniforms.actorSize >= 0;
+                uniforms.actorSize >= 0 &&
+                uniforms.shadowOffset >= 0 &&
+                uniforms.shadowBlur >= 0 &&
+                uniforms.shadowSpread >= 0 &&
+                uniforms.shadowOpacity >= 0;
 
             if (ready) {
                 this.#uniformsCached = true;
@@ -237,4 +318,18 @@ function copyFloat4(dest: number[], src: readonly number[]) {
 function copyFloat2(dest: number[], src: readonly number[]) {
     dest[0] = src[0];
     dest[1] = src[1];
+}
+
+function floatArrayEqual(a: readonly number[], b: readonly number[]) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+}
+
+function copyFloatArray(dest: number[], src: readonly number[]) {
+    for (let i = 0; i < src.length; i++) {
+        dest[i] = src[i];
+    }
 }
