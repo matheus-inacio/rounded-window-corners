@@ -17,7 +17,7 @@ This fork is a significant refactor of the original extension. Below is a summar
 
 ## Architecture refactoring
 
-The monolithic `src/manager/utils.ts` (373 lines) was decomposed into focused, single-responsibility modules:
+The monolithic `src/manager/utils.ts` was decomposed into focused, single-responsibility modules:
 
 | New module | Responsibility |
 |---|---|
@@ -25,14 +25,18 @@ The monolithic `src/manager/utils.ts` (373 lines) was decomposed into focused, s
 | [`geometry.ts`](src/manager/geometry.ts) | Pure, stateless math helpers for window bounds and content-offset calculations. |
 | [`actor_helpers.ts`](src/manager/actor_helpers.ts) | Small helpers for safely unwrapping window actors. |
 | [`window_state.ts`](src/manager/window_state.ts) | Shared `WeakMap`/`Set` state that tracks managed actors and their per-window effect data. |
+| [`actor_tracker.ts`](src/manager/actor_tracker.ts) | Manages the lifecycle of window actors (alive, initialized, pending). |
+| [`event_handlers.ts`](src/manager/event_handlers.ts) | Orchestrates callbacks for each signal and delegates logic to other modules. |
+| [`event_manager.ts`](src/manager/event_manager.ts) | Responsible only for signal wiring: attaches and detaches GNOME Shell signals. |
+| [`signal_manager.ts`](src/manager/signal_manager.ts) | Generic GObject signal connect/disconnect utilities. |
 | [`config.ts`](src/utils/config.ts) | Single source of truth for all hardcoded settings (radii, shadows, padding, blacklist). |
 
 ## Fragment shader rewrite
 
-The rounded-corners fragment shader was rewritten from **197 → 43 lines**:
+The rounded-corners fragment shader was simplified and rewritten:
 
 - **Branchless execution path** — the original shader used `if`/`else` branches for border mode, corner type (circle vs. squircle), and early-exit bounds checks. The new shader eliminates all branching; border rendering is gated by multiplying with a `showBorder` uniform (when `0.0` the border math evaluates to zero — no GPU branch divergence).
-- **Simplified SDF** — replaced the dual `circleBounds` / `squircleBounds` functions with a single `getSquircleDist` + `getPointAlpha` SDF pair that uses `sqrt(sqrt(dot(d², d²)))` for the superellipse distance, removing `pow()` calls with arbitrary exponents.
+- **Simplified SDF** — replaced the dual `circleBounds` / `squircleBounds` functions with a single `getPointAlpha` using a standard rounded box SDF, removing `pow()` calls and arbitrary exponents.
 - **Pre-computed uniforms** — center and half-size are now computed on the CPU side and passed as `vec4 bounds` (xy = center, zw = halfSize), eliminating per-pixel coordinate arithmetic. `actorSize` replaces the old `pixelStep` uniform so the shader multiplies instead of dividing.
 - **Hardcoded border color** — `BORDER_COLOR` is a compile-time `#define` instead of a runtime uniform, reducing uniform upload cost.
 
@@ -55,4 +59,4 @@ The rounded-corners fragment shader was rewritten from **197 → 43 lines**:
 
 ## Extension entry point simplification
 
-`src/extension.ts` went from **~130 → ~55 lines**. The `enable()` path no longer initializes GSettings, exports a D-Bus service, patches overview/workspace-switch methods, or watches preference changes. The `disable()` path simply clears the injection manager, disables effects, and cleans up the app-type cache.
+`src/extension.ts` was simplified. The `enable()` path no longer initializes GSettings, exports a D-Bus service, patches overview/workspace-switch methods, or watches preference changes. The `disable()` path simply clears the injection manager, disables effects, and cleans up the app-type cache.
