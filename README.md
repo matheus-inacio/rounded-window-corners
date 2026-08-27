@@ -16,6 +16,7 @@ Rounded Windows - Lite is intentionally opinionated:
 - **Native GTK4 look** - rounds window corners just like native GTK4 windows on GNOME, providing a seamless and consistent experience.
 - **Stays out of the way** - no settings panel, no preferences window, no D-Bus services running in the background. The extension does one thing and does it well.
 - **Lightweight** - the GPU shader is only 43 lines with zero branching, and redundant work is aggressively cached. You shouldn't notice it's running.
+- **Native-like shadows** - shadows are drawn directly on the GPU within the shader, completely replacing the original extension's heavy CSS-styled shadow actors. This enables multi-layered, beautiful shadows with virtually zero overhead.
 - **Plays nice with others** - apps that already round their own corners (GTK 4 / LibAdwaita, LibHandy) are automatically detected and skipped, so you never get double-rounded windows.
 - **Easy to maintain** - small, modular codebase with minimal coupling to GNOME Shell internals, making it easier to keep up with GNOME updates.
 

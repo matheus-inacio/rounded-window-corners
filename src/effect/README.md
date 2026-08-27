@@ -2,15 +2,10 @@
 
 This directory contains the code for applying GLSL effects to windows.
 
-## `clip_shadow_effect.ts`
-
-Due to a bug in GNOME, window shadows are drawn behind window contents. This
-effect loads a simple Fragment shader that clips the shadow behind the window.
-
 ## `rounded_corners_effect.ts`
 
 This effect loads the actual Fragment shader that rounds the corners and draws
-custom borders for the window. The class applies the effect and provides a
+custom borders and shadows for the window. The class applies the effect and provides a
 function to change uniforms passed to the effect.
 
 ## `shader`
@@ -18,5 +13,7 @@ function to change uniforms passed to the effect.
 This is the directory where the Fragment shaders are stored.
 
 If you're interested in implementation details of the shader, you can read the
-`shader/rounded_corners.frag` file, which is well commented and explains how
-it works in great detail.
+`rounded_corners.frag` file, which is well commented and explains how
+it works in great detail. Note that in this fork, shadows are rendered entirely
+by the shader using a multi-layered approach, rather than the original extension's
+method of injecting CSS-styled Clutter actors.

@@ -22,8 +22,7 @@ The monolithic `src/manager/utils.ts` (373 lines) was decomposed into focused, s
 | New module | Responsibility |
 |---|---|
 | [`eligibility.ts`](src/manager/eligibility.ts) | Full "should we apply the effect?" decision tree, including async app-type detection. |
-| [`geometry.ts`](src/manager/geometry.ts) | Pure, stateless math helpers for window bounds, shadow offsets, and content-offset calculations. |
-| [`shadow.ts`](src/manager/shadow.ts) | Shadow actor creation, styling, constraint management, and CSS-cache-aware refresh. |
+| [`geometry.ts`](src/manager/geometry.ts) | Pure, stateless math helpers for window bounds and content-offset calculations. |
 | [`actor_helpers.ts`](src/manager/actor_helpers.ts) | Small helpers for safely unwrapping window actors. |
 | [`window_state.ts`](src/manager/window_state.ts) | Shared `WeakMap`/`Set` state that tracks managed actors and their per-window effect data. |
 | [`config.ts`](src/utils/config.ts) | Single source of truth for all hardcoded settings (radii, shadows, padding, blacklist). |
@@ -40,7 +39,7 @@ The rounded-corners fragment shader was rewritten from **197 → 43 lines**:
 ## Performance optimizations
 
 - **Uniform location caching** — `get_uniform_location()` results are now cached per-instance with a `#uniformsCached` guard; values are only re-uploaded when they actually change (per-field `NaN`-initialized dirty tracking).
-- **Shadow style cache** — `updateShadowActorStyle()` compares 12 individual numeric fields (radius, offsets, blur, spread, opacity, padding sides, hidden state) instead of building a template-literal cache key, avoiding string allocation and GC pressure on every focus/resize event.
+- **Shader-based shadows** — completely replaced the original extension's method of creating separate `St.Bin` shadow actors and computing CSS strings. Shadows are now natively rendered on the GPU by the fragment shader alongside rounded corners, supporting up to three layered shadows efficiently without creating additional Clutter actors or Garbage Collection (GC) pressure.
 - **Managed actor `Set`** — `onRestacked` iterates a `Set<RoundedWindowActor>` instead of scanning all actors from `global.get_window_actors()`, turning O(n) global lookups into O(managed) iterations.
 - **App-type detection** — the `/proc/<pid>/map_files` symlink-target enumeration now reads in batches of 64 entries, with a chunked 16 KB fallback for `/proc/<pid>/maps` (overlap-safe for needle boundary detection). A `.exe` fast-path skips I/O entirely for Wine/Proton windows. Results are cached per `wm_class_instance`.
 - **Geometry pre-computation** — frame rectangles are pre-fetched once per event cycle and passed through, preventing redundant `get_frame_rect()` / `get_buffer_rect()` calls across bounds, offset, and shadow calculations.
@@ -50,7 +49,7 @@ The rounded-corners fragment shader was rewritten from **197 → 43 lines**:
 
 - **Duplicate effect guard** — `onAddEffect` is now idempotent; re-entry for the same actor is a no-op, preventing redundant effect registration and state-map collisions.
 - **Signal disconnection safety** — all `disconnect()` calls verify the handler ID is valid before attempting removal, preventing "no handler with id" errors during disable.
-- **GObject type collision guard** — `RoundedCornersEffect` and `ClipShadowEffect` register with explicit `GTypeName` values, avoiding "Type name already registered" errors when another extension defines a GObject with the same auto-generated name.
+- **GObject type collision guard** — `RoundedCornersEffect` registers with an explicit `GTypeName` value, avoiding "Type name already registered" errors when another extension defines a GObject with the same auto-generated name.
 - **Texture GC crash prevention** — the extension proactively re-applies effects when a window's texture reference changes (e.g. after a GNOME Shell garbage collection sweep), preventing use-after-free crashes.
 - **Geometry validation** — effects are not applied to windows with 0×0 dimensions or invalid frame rects.
 

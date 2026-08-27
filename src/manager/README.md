@@ -38,14 +38,6 @@ Pure geometry / math functions with no I/O and no side effects:
 - `computeWindowContentsOffset` — delta between buffer rect and frame rect.
 - `computeBounds` — outer clipping bounds for the shader, with per-app insets.
 
-## `shadow.ts`
-
-Complete shadow actor lifecycle:
-
-- `createShadow` — builds and inserts the `St.Bin` shadow actor.
-- `refreshShadow` — re-applies CSS when focus or window state changes.
-- `updateShadowActorStyle` — computes and sets the CSS, with a style-key cache
-  to skip redundant redraws.
 
 ## `eligibility.ts`
 
