@@ -206,7 +206,15 @@ function refreshRoundedCorners(
         win.fullscreen
     );
 
-    const shadowSettings = win.appears_focused ? FOCUSED_SHADOW : UNFOCUSED_SHADOW;
+    let shadowSettings = win.appears_focused ? FOCUSED_SHADOW : UNFOCUSED_SHADOW;
+
+    const bufferRect = win.get_buffer_rect();
+    // If a Wayland window has no native padding (buffer == frame) and no CSD insets,
+    // we cannot draw shadows because the shader cannot draw outside the buffer.
+    // Instead of complex vertex expansion, we just disable the shadow by zeroing opacity.
+    if (showBorder && bufferRect.width === frameRect.width && !state.cachedShadowInsets) {
+        shadowSettings = shadowSettings.map(s => ({ ...s, opacity: 0 })) as typeof shadowSettings;
+    }
 
     effect.updateUniforms(
         computeBounds(actor, windowContentOffset, state.cachedShadowInsets),
