@@ -37,7 +37,6 @@ Pure geometry / math functions with no I/O and no side effects:
 
 - `computeWindowContentsOffset` — delta between buffer rect and frame rect.
 - `computeBounds` — outer clipping bounds for the shader, with per-app insets.
-- `computeShadowActorOffset` — `BindConstraint` offsets for the shadow actor.
 
 ## `shadow.ts`
 

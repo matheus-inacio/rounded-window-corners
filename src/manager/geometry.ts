@@ -11,7 +11,7 @@ import type {Bounds} from '../utils/types.js';
 
 import Meta from 'gi://Meta';
 
-import {SHADOW_PADDING} from '../utils/constants.js';
+
 
 /**
  * Compute the shadow insets for a Wayland window that embeds its own
@@ -100,28 +100,5 @@ export function computeWindowContentsOffset(
         frameRect.y - bufferRect.y,
         frameRect.width - bufferRect.width,
         frameRect.height - bufferRect.height,
-    ];
-}
-
-/**
- * Compute the position and size offsets to apply to a shadow actor so it
- * correctly underlaps the window with the configured {@link SHADOW_PADDING}.
- *
- * @param [offsetX, offsetY, offsetWidth, offsetHeight] - Content offsets
- *        returned by {@link computeWindowContentsOffset}.
- * @returns `[x, y, width, height]` offsets to set on the shadow's
- *          `BindConstraint`s.
- */
-export function computeShadowActorOffset([
-    offsetX,
-    offsetY,
-    offsetWidth,
-    offsetHeight,
-]: [number, number, number, number]): number[] {
-    return [
-        offsetX - SHADOW_PADDING,
-        offsetY - SHADOW_PADDING,
-        2 * SHADOW_PADDING + offsetWidth,
-        2 * SHADOW_PADDING + offsetHeight,
     ];
 }
