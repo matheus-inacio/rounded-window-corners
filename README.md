@@ -28,7 +28,7 @@ This fork aims to stay lean and straightforward by reducing complexity and avoid
 
 ## Changes from upstream
 
-This fork is a significant refactor of the original extension - roughly **11,000 lines removed** and the remaining code restructured into focused modules.
+This fork is a significant refactor of the original extension, with the codebase restructured into focused modules.
 
 For a full technical breakdown (removed subsystems, shader rewrite, performance work, lifecycle fixes), see **[CHANGES.md](CHANGES.md)**.
 
