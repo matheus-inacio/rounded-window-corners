@@ -3,12 +3,10 @@
  * a custom shadow.
  *
  * This module owns the entire "should we apply the effect?" decision tree,
- * including the asynchronous detection of application toolkit type
- * (LibAdwaita / LibHandy / Other) which is the most complex piece of logic in
- * the extension.
+ * including synchronous detection of application toolkit type
+ * (LibAdwaita / LibHandy / Other) via `/proc/<pid>/maps`.
  */
 
-import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 
@@ -116,7 +114,6 @@ export function isPermanentlyIneligible(
 export function shouldEnableEffect(
     win: Meta.Window & {
         _appType?: AppType;
-        _appTypePromise?: Promise<void>;
         _cachedWmClass?: string | null;
         _cachedWinType?: Meta.WindowType;
     },
@@ -130,24 +127,13 @@ export function shouldEnableEffect(
     }
 
     if (win._appType === undefined) {
-        if (!win._appTypePromise) {
-            win._appTypePromise = getAppTypeAsync(win).then(appType => {
-                win._appType = appType;
+        win._appType = getAppType(win);
 
-                // Re-evaluate now that the type is known.  Notifying 'size'
-                // triggers the same refresh path as a resize event.
-                const actor = win.get_compositor_private();
-                // biome-ignore lint/style/useNamingConvention: GObject/C API name
-                type DestroyCheck = {is_destroyed?: () => boolean};
-                if (actor && !(actor as DestroyCheck).is_destroyed?.()) {
-                    actor.notify('size');
-                }
-            });
+        // Now that the type is known, check if we should skip it.
+        if (_skipForLibToolkit(win._appType, BLACKLIST.has(win._cachedWmClass ?? ''))) {
+            logTimeEnd(`shouldEnableEffect`);
+            return false;
         }
-        // Return true optimistically while the promise resolves so we don't
-        // accidentally show square corners on apps we intend to round.
-        logTimeEnd(`shouldEnableEffect`);
-        return true;
     }
 
     logDebug(() => `Check Type of window => ${win._appType}`);
@@ -184,7 +170,7 @@ function _roundedCornersAllowedForWindowState(
 }
 
 // ---------------------------------------------------------------------------
-// App-type detection
+// App-type detection (synchronous)
 // ---------------------------------------------------------------------------
 
 const KNOWN_LIBADWAITA_APPS = new Set([
@@ -203,287 +189,76 @@ const KNOWN_LIBADWAITA_APPS = new Set([
     'com.mitchellh.ghostty'
 ]);
 
-const appTypePromiseCache = new Map<string, Promise<AppType>>();
-
 /**
- * Asynchronously resolve the toolkit type for the application that owns `win`.
+ * Synchronously resolve the toolkit type for the application that owns `win`.
  *
- * Tries {@link _detectFromMapFiles} first (O(unique mapped files / batch)
- * async round-trips), then falls back to {@link _detectFromMaps} (single
- * chunked bulk read) when `map_files` is inaccessible due to ptrace
- * restrictions.
+ * Reads `/proc/<pid>/maps` in a single synchronous call. This is safe because
+ * procfs is a virtual filesystem backed entirely by kernel memory — there is no
+ * disk I/O involved, and the read typically completes in <1ms.
+ *
+ * The previous async approach (enumerating `/proc/<pid>/map_files` with GLib
+ * callbacks) introduced ~65ms of latency per window due to main-loop
+ * round-trips between batches, which is far worse than a sub-millisecond
+ * synchronous read.
  */
-async function getAppTypeAsync(
+function getAppType(
     win: Meta.Window & {_cachedWmClass?: string | null},
-): Promise<AppType> {
+): AppType {
     if (win._cachedWmClass === undefined) {
         win._cachedWmClass = win.get_wm_class_instance();
     }
-    const wmClassRaw = win._cachedWmClass;
-    const wmClass = wmClassRaw ? String(wmClassRaw) : null;
-    logTime(`getAppTypeAsync [${wmClass || 'unknown'}]`);
+    const wmClass = win._cachedWmClass;
+    logTime(`getAppType [${wmClass || 'unknown'}]`);
     
     if (wmClass && appTypeCache.has(wmClass)) {
-        logDebug(
-            `AppType cache hit for "${wmClass}": ${appTypeCache.get(wmClass)}`,
-        );
-        logTimeEnd(`getAppTypeAsync [${wmClass || 'unknown'}]`);
+        logDebug(`AppType cache hit for "${wmClass}": ${appTypeCache.get(wmClass)}`);
+        logTimeEnd(`getAppType [${wmClass || 'unknown'}]`);
         return appTypeCache.get(wmClass)!;
     }
 
     if (wmClass && KNOWN_LIBADWAITA_APPS.has(wmClass)) {
-        logDebug(
-            `AppType fast-path for "${wmClass}": skipping I/O, assuming LibAdwaita`,
-        );
+        logDebug(`AppType fast-path for "${wmClass}": LibAdwaita`);
         appTypeCache.set(wmClass, 'LibAdwaita');
-        logTimeEnd(`getAppTypeAsync [${wmClass || 'unknown'}]`);
+        logTimeEnd(`getAppType [${wmClass || 'unknown'}]`);
         return 'LibAdwaita';
     }
 
     if (wmClass && wmClass.toLowerCase().endsWith('.exe')) {
-        logDebug(
-            `AppType fast-path for "${wmClass}": skipping I/O for .exe, assuming Other`,
-        );
+        logDebug(`AppType fast-path for "${wmClass}": .exe → Other`);
         appTypeCache.set(wmClass, 'Other');
-        logTimeEnd(`getAppTypeAsync [${wmClass || 'unknown'}]`);
+        logTimeEnd(`getAppType [${wmClass || 'unknown'}]`);
         return 'Other';
     }
 
-    if (wmClass && appTypePromiseCache.has(wmClass)) {
-        logDebug(`AppType promise cache hit for "${wmClass}"`);
-        const appType = await appTypePromiseCache.get(wmClass)!;
-        logTimeEnd(`getAppTypeAsync [${wmClass || 'unknown'}]`);
-        return appType;
-    }
-
     const pid = win.get_pid();
-    logDebug(`Detecting app type for "${wmClass}" (pid ${pid}) via map_files…`);
+    const appType = _detectFromMapsSync(pid);
 
-    const promise = (async () => {
-        const appType = await _detectFromMapFiles(pid).catch(e => {
-            logDebug(
-                `map_files unavailable for pid ${pid} (${e}), falling back to /proc/maps`,
-            );
-            return _detectFromMaps(pid);
-        });
-
-        logDebug(`AppType resolved for "${wmClass}" (pid ${pid}): ${appType}`);
-        if (wmClass) {
-            appTypeCache.set(wmClass, appType);
-            appTypePromiseCache.delete(wmClass);
-        }
-        return appType;
-    })();
-
+    logDebug(`AppType resolved for "${wmClass}" (pid ${pid}): ${appType}`);
     if (wmClass) {
-        appTypePromiseCache.set(wmClass, promise);
+        appTypeCache.set(wmClass, appType);
     }
 
-    const appType = await promise;
-    logTimeEnd(`getAppTypeAsync [${wmClass || 'unknown'}]`);
+    logTimeEnd(`getAppType [${wmClass || 'unknown'}]`);
     return appType;
 }
 
 /**
- * Detect the app type by enumerating `/proc/<pid>/map_files/`.
+ * Read `/proc/<pid>/maps` synchronously and search for toolkit library names.
  *
- * Each entry is a symlink whose target is the path of a memory-mapped file.
- * Checking symlink targets avoids parsing the full text of `/proc/<pid>/maps`:
- * there are far fewer unique mapped files than lines in the maps file, and we
- * retrieve them in batches of 64 rather than one per GLib main-loop round-trip.
- *
- * @throws if the directory cannot be enumerated (e.g. ptrace restrictions).
+ * procfs files are virtual — backed by kernel memory with no disk I/O — so a
+ * synchronous read completes in well under 1ms even for large maps files.
  */
-function _detectFromMapFiles(pid: number): Promise<AppType> {
-    return new Promise((resolve, reject) => {
-        const dir = Gio.File.new_for_path(`/proc/${pid}/map_files`);
-        dir.enumerate_children_async(
-            'standard::symlink-target',
-            Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS,
-            GLib.PRIORITY_LOW,
-            null,
-            (_src, enumRes) => {
-                let enumerator: Gio.FileEnumerator;
-                try {
-                    enumerator = dir.enumerate_children_finish(enumRes);
-                } catch (e) {
-                    reject(e);
-                    return;
-                }
+function _detectFromMapsSync(pid: number): AppType {
+    try {
+        const [ok, contents] = GLib.file_get_contents(`/proc/${pid}/maps`);
+        if (!ok || !contents) return 'Other';
 
-                let batchCount = 0;
-                const readBatch = () => {
-                    enumerator.next_files_async(
-                        64,
-                        GLib.PRIORITY_LOW,
-                        null,
-                        (_s, batchRes) => {
-                            try {
-                                const infos =
-                                    enumerator.next_files_finish(batchRes);
-                                batchCount++;
-
-                                if (infos.length === 0) {
-                                    logDebug(
-                                        `map_files[pid ${pid}]: scanned ${batchCount} batch(es), result=Other`,
-                                    );
-                                    try {
-                                        enumerator.close(null);
-                                    } catch {}
-                                    resolve('Other');
-                                    return;
-                                }
-
-                                for (const info of infos) {
-                                    const target =
-                                        info.get_symlink_target() ?? '';
-                                    if (target.includes('libadwaita-1.so')) {
-                                        logDebug(
-                                            `map_files[pid ${pid}]: found libadwaita in batch ${batchCount} (${target})`,
-                                        );
-                                        try {
-                                            enumerator.close(null);
-                                        } catch {}
-                                        resolve('LibAdwaita');
-                                        return;
-                                    }
-                                    if (target.includes('libhandy-1.so')) {
-                                        logDebug(
-                                            `map_files[pid ${pid}]: found libhandy in batch ${batchCount} (${target})`,
-                                        );
-                                        try {
-                                            enumerator.close(null);
-                                        } catch {}
-                                        resolve('LibHandy');
-                                        return;
-                                    }
-                                }
-
-                                readBatch();
-                            } catch (e) {
-                                logDebug(
-                                    `map_files[pid ${pid}]: error reading batch ${batchCount}: ${e}`,
-                                );
-                                try {
-                                    enumerator.close(null);
-                                } catch {}
-                                resolve('Other');
-                            }
-                        },
-                    );
-                };
-
-                readBatch();
-            },
-        );
-    });
-}
-
-/**
- * Fallback: read `/proc/<pid>/maps` in 16 KB chunks and search each chunk for
- * the toolkit library names.
- *
- * This is strictly better than the two naive extremes:
- *  - Old line-by-line: O(lines) async callbacks, O(1) memory  → huge GLib overhead
- *  - Bulk load_contents_async: O(1) callbacks, O(file) memory → high memory pressure
- *
- * Chunked approach: O(file_size / 16KB) callbacks ≈ 5–10 for typical apps,
- * and O(16KB) memory at any point in time.
- *
- * A `(needle_length − 1)` = 15-byte overlap is kept between adjacent chunks so
- * that needles straddling a chunk boundary are never missed.
- */
-function _detectFromMaps(pid: number): Promise<AppType> {
-    // Longest needle is 'libadwaita-1.so' (16 chars); overlap = 16 - 1 = 15.
-    const ChunkSize = 16 * 1024;
-    const Overlap = 'libadwaita-1.so'.length - 1;
-
-    return new Promise(resolve => {
-        logDebug(
-            `maps[pid ${pid}]: opening /proc/${pid}/maps for chunked read`,
-        );
-        const file = Gio.File.new_for_path(`/proc/${pid}/maps`);
-
-        file.read_async(GLib.PRIORITY_LOW, null, (_src, openRes) => {
-            let stream: Gio.FileInputStream;
-            try {
-                stream = file.read_finish(openRes);
-            } catch (e) {
-                logDebug(`maps[pid ${pid}]: failed to open stream: ${e}`);
-                resolve('Other');
-                return;
-            }
-
-            const decoder = new TextDecoder();
-            let tail = ''; // last OVERLAP chars of the previous chunk
-            let chunkNum = 0;
-
-            const readChunk = () => {
-                stream.read_bytes_async(
-                    ChunkSize,
-                    GLib.PRIORITY_LOW,
-                    null,
-                    (_s, chunkRes) => {
-                        try {
-                            const bytes = stream.read_bytes_finish(chunkRes);
-                            chunkNum++;
-
-                            if (bytes.get_size() === 0) {
-                                logDebug(
-                                    `maps[pid ${pid}]: scanned ${chunkNum - 1} chunk(s), result=Other`,
-                                );
-                                try {
-                                    stream.close(null);
-                                } catch {}
-                                resolve('Other');
-                                return;
-                            }
-
-                            const chunk = decoder.decode(
-                                bytes.get_data() as unknown as Uint8Array,
-                            );
-                            const searchText = tail + chunk;
-
-                            if (searchText.includes('libadwaita-1.so')) {
-                                logDebug(
-                                    `maps[pid ${pid}]: found libadwaita-1.so in chunk ${chunkNum}`,
-                                );
-                                try {
-                                    stream.close(null);
-                                } catch {}
-                                resolve('LibAdwaita');
-                                return;
-                            }
-                            if (searchText.includes('libhandy-1.so')) {
-                                logDebug(
-                                    `maps[pid ${pid}]: found libhandy-1.so in chunk ${chunkNum}`,
-                                );
-                                try {
-                                    stream.close(null);
-                                } catch {}
-                                resolve('LibHandy');
-                                return;
-                            }
-
-                            tail =
-                                chunk.length >= Overlap
-                                    ? chunk.slice(-Overlap)
-                                    : chunk;
-                            readChunk();
-                        } catch (e) {
-                            logDebug(
-                                `maps[pid ${pid}]: error reading chunk ${chunkNum}: ${e}`,
-                            );
-                            try {
-                                stream.close(null);
-                            } catch {}
-                            resolve('Other');
-                        }
-                    },
-                );
-            };
-
-            readChunk();
-        });
-    });
+        const text = new TextDecoder().decode(contents as unknown as Uint8Array);
+        if (text.includes('libadwaita-1.so')) return 'LibAdwaita';
+        if (text.includes('libhandy-1.so')) return 'LibHandy';
+        return 'Other';
+    } catch (e) {
+        logDebug(`Failed to read /proc/${pid}/maps: ${e}`);
+        return 'Other';
+    }
 }
