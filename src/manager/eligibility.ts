@@ -17,7 +17,7 @@ import {
     GLOBAL_ROUNDED_CORNER_SETTINGS,
     WHITELIST_MODE,
 } from '../utils/config.js';
-import {logDebug} from '../utils/log.js';
+import {logDebug, logTime, logTimeEnd} from '../utils/log.js';
 
 /** The toolkit type of a running application. */
 export type AppType = 'LibAdwaita' | 'LibHandy' | 'Other';
@@ -59,17 +59,18 @@ export function clearAppTypeCache() {
  * @param win - The window to evaluate.
  */
 export function isPermanentlyIneligible(
-    win: Meta.Window & {_appType?: AppType},
+    win: Meta.Window & {
+        _appType?: AppType;
+        _cachedWmClass?: string | null;
+        _cachedWinType?: Meta.WindowType;
+    },
 ): boolean {
-    // Skip rounded corners for the DING (Desktop Icons NG) extension.
-    // https://extensions.gnome.org/extension/2087/desktop-icons-ng-ding/
-    if (win.gtkApplicationId === 'com.rastersoft.ding') {
-        return true;
+    if (win._cachedWmClass === undefined) {
+        win._cachedWmClass = win.get_wm_class_instance();
     }
-
-    const wmClass = win.get_wm_class_instance();
+    const wmClass = win._cachedWmClass;
     if (wmClass == null) {
-        logDebug(`Warning: wm_class_instance of ${win}: ${win.title} is null`);
+        logDebug(`Warning: wm_class_instance of window is null`);
         return true;
     }
 
@@ -79,11 +80,15 @@ export function isPermanentlyIneligible(
         return true;
     }
 
+    if (win._cachedWinType === undefined) {
+        win._cachedWinType = win.windowType;
+    }
+    const winType = win._cachedWinType;
     // Only apply the effect to normal windows (skip menus, tooltips, etc.)
     if (
-        win.windowType !== Meta.WindowType.NORMAL &&
-        win.windowType !== Meta.WindowType.DIALOG &&
-        win.windowType !== Meta.WindowType.MODAL_DIALOG
+        winType !== Meta.WindowType.NORMAL &&
+        winType !== Meta.WindowType.DIALOG &&
+        winType !== Meta.WindowType.MODAL_DIALOG
     ) {
         return true;
     }
@@ -109,9 +114,18 @@ export function isPermanentlyIneligible(
  * @param win - The window to evaluate.
  */
 export function shouldEnableEffect(
-    win: Meta.Window & {_appType?: AppType; _appTypePromise?: Promise<void>},
+    win: Meta.Window & {
+        _appType?: AppType;
+        _appTypePromise?: Promise<void>;
+        _cachedWmClass?: string | null;
+        _cachedWinType?: Meta.WindowType;
+    },
+    windowState?: {maximized: boolean, fullscreen: boolean}
 ): boolean {
+    logTime(`shouldEnableEffect`);
+    
     if (isPermanentlyIneligible(win)) {
+        logTimeEnd(`shouldEnableEffect`);
         return false;
     }
 
@@ -132,12 +146,15 @@ export function shouldEnableEffect(
         }
         // Return true optimistically while the promise resolves so we don't
         // accidentally show square corners on apps we intend to round.
+        logTimeEnd(`shouldEnableEffect`);
         return true;
     }
 
-    logDebug(`Check Type of window:${win.title} => ${win._appType}`);
+    logDebug(() => `Check Type of window => ${win._appType}`);
 
-    return _roundedCornersAllowedForWindowState(win);
+    const res = _roundedCornersAllowedForWindowState(win, windowState);
+    logTimeEnd(`shouldEnableEffect`);
+    return res;
 }
 
 // ---------------------------------------------------------------------------
@@ -152,9 +169,12 @@ function _skipForLibToolkit(appType: AppType, isException: boolean): boolean {
     return appType === 'LibAdwaita' || appType === 'LibHandy';
 }
 
-function _roundedCornersAllowedForWindowState(win: Meta.Window): boolean {
-    const maximized = win.maximizedHorizontally || win.maximizedVertically;
-    const fullscreen = win.fullscreen;
+function _roundedCornersAllowedForWindowState(
+    win: Meta.Window,
+    windowState?: {maximized: boolean, fullscreen: boolean}
+): boolean {
+    const maximized = windowState ? windowState.maximized : (win.maximizedHorizontally || win.maximizedVertically);
+    const fullscreen = windowState ? windowState.fullscreen : win.fullscreen;
     const cfg = GLOBAL_ROUNDED_CORNER_SETTINGS;
     return (
         !(maximized || fullscreen) ||
@@ -167,6 +187,24 @@ function _roundedCornersAllowedForWindowState(win: Meta.Window): boolean {
 // App-type detection
 // ---------------------------------------------------------------------------
 
+const KNOWN_LIBADWAITA_APPS = new Set([
+    'org.gnome.Settings',
+    'org.gnome.Nautilus',
+    'org.gnome.Software',
+    'org.gnome.Calculator',
+    'org.gnome.Calendar',
+    'org.gnome.Characters',
+    'org.gnome.Contacts',
+    'org.gnome.Weather',
+    'org.gnome.clocks',
+    'org.gnome.Extensions',
+    'org.gnome.TextEditor',
+    'org.gnome.Console',
+    'com.mitchellh.ghostty'
+]);
+
+const appTypePromiseCache = new Map<string, Promise<AppType>>();
+
 /**
  * Asynchronously resolve the toolkit type for the application that owns `win`.
  *
@@ -175,13 +213,31 @@ function _roundedCornersAllowedForWindowState(win: Meta.Window): boolean {
  * chunked bulk read) when `map_files` is inaccessible due to ptrace
  * restrictions.
  */
-async function getAppTypeAsync(win: Meta.Window): Promise<AppType> {
-    const wmClass = win.get_wm_class_instance();
+async function getAppTypeAsync(
+    win: Meta.Window & {_cachedWmClass?: string | null},
+): Promise<AppType> {
+    if (win._cachedWmClass === undefined) {
+        win._cachedWmClass = win.get_wm_class_instance();
+    }
+    const wmClassRaw = win._cachedWmClass;
+    const wmClass = wmClassRaw ? String(wmClassRaw) : null;
+    logTime(`getAppTypeAsync [${wmClass || 'unknown'}]`);
+    
     if (wmClass && appTypeCache.has(wmClass)) {
         logDebug(
             `AppType cache hit for "${wmClass}": ${appTypeCache.get(wmClass)}`,
         );
+        logTimeEnd(`getAppTypeAsync [${wmClass || 'unknown'}]`);
         return appTypeCache.get(wmClass)!;
+    }
+
+    if (wmClass && KNOWN_LIBADWAITA_APPS.has(wmClass)) {
+        logDebug(
+            `AppType fast-path for "${wmClass}": skipping I/O, assuming LibAdwaita`,
+        );
+        appTypeCache.set(wmClass, 'LibAdwaita');
+        logTimeEnd(`getAppTypeAsync [${wmClass || 'unknown'}]`);
+        return 'LibAdwaita';
     }
 
     if (wmClass && wmClass.toLowerCase().endsWith('.exe')) {
@@ -189,21 +245,42 @@ async function getAppTypeAsync(win: Meta.Window): Promise<AppType> {
             `AppType fast-path for "${wmClass}": skipping I/O for .exe, assuming Other`,
         );
         appTypeCache.set(wmClass, 'Other');
+        logTimeEnd(`getAppTypeAsync [${wmClass || 'unknown'}]`);
         return 'Other';
+    }
+
+    if (wmClass && appTypePromiseCache.has(wmClass)) {
+        logDebug(`AppType promise cache hit for "${wmClass}"`);
+        const appType = await appTypePromiseCache.get(wmClass)!;
+        logTimeEnd(`getAppTypeAsync [${wmClass || 'unknown'}]`);
+        return appType;
     }
 
     const pid = win.get_pid();
     logDebug(`Detecting app type for "${wmClass}" (pid ${pid}) via map_files…`);
 
-    const appType = await _detectFromMapFiles(pid).catch(e => {
-        logDebug(
-            `map_files unavailable for pid ${pid} (${e}), falling back to /proc/maps`,
-        );
-        return _detectFromMaps(pid);
-    });
+    const promise = (async () => {
+        const appType = await _detectFromMapFiles(pid).catch(e => {
+            logDebug(
+                `map_files unavailable for pid ${pid} (${e}), falling back to /proc/maps`,
+            );
+            return _detectFromMaps(pid);
+        });
 
-    logDebug(`AppType resolved for "${wmClass}" (pid ${pid}): ${appType}`);
-    if (wmClass) appTypeCache.set(wmClass, appType);
+        logDebug(`AppType resolved for "${wmClass}" (pid ${pid}): ${appType}`);
+        if (wmClass) {
+            appTypeCache.set(wmClass, appType);
+            appTypePromiseCache.delete(wmClass);
+        }
+        return appType;
+    })();
+
+    if (wmClass) {
+        appTypePromiseCache.set(wmClass, promise);
+    }
+
+    const appType = await promise;
+    logTimeEnd(`getAppTypeAsync [${wmClass || 'unknown'}]`);
     return appType;
 }
 

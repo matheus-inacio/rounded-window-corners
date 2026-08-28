@@ -158,7 +158,7 @@ export function applyEffectTo(actor: RoundedWindowActor): void {
 
     if (isPermanentlyIneligible(metaWindow)) {
         logDebug(
-            `Skipping ${metaWindow.title} (Permanently Ineligible on Initialization)`,
+            `Skipping window (Permanently Ineligible on Initialization)`,
         );
         return;
     }
@@ -241,7 +241,7 @@ function throttledResizeHandler(actor: RoundedWindowActor): void {
 
     if (actor.metaWindow && isPermanentlyIneligible(actor.metaWindow)) {
         logDebug(
-            `Optimization skip triggered: Detaching signals and removing effect from ${actor.metaWindow.title}`,
+            `Optimization skip triggered: Detaching signals and removing effect from window`,
         );
         removeEffectFrom(actor);
         return;
@@ -270,7 +270,7 @@ function handleFocusChanged(actor: RoundedWindowActor): void {
 
     if (actor.metaWindow && isPermanentlyIneligible(actor.metaWindow)) {
         logDebug(
-            `Optimization skip triggered: Detaching signals and removing effect from ${actor.metaWindow.title}`,
+            `Optimization skip triggered: Detaching signals and removing effect from window`,
         );
         removeEffectFrom(actor);
         return;

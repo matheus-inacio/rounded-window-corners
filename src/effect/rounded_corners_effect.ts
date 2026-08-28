@@ -8,6 +8,7 @@ import Clutter from 'gi://Clutter';
 import {BORDER_WIDTH, GLOBAL_ROUNDED_CORNER_SETTINGS} from '../utils/config.js';
 import {SHADOW_PADDING} from '../utils/constants.js';
 import {readShader} from '../utils/file.js';
+import {logTime, logTimeEnd} from '../utils/log.js';
 
 const DIVISOR_SIGMA = 1.5;
 
@@ -105,6 +106,8 @@ export const RoundedCornersEffect = GObject.registerClass(
         }
 
         updateUniforms(windowBounds: Bounds, showBorder: boolean, shadowSettings: BoxShadow[]) {
+            logTime('updateUniforms');
+            
             const showBorderFlag = showBorder ? 1 : 0;
             const outerRadius = GLOBAL_ROUNDED_CORNER_SETTINGS.borderRadius;
             const {padding} = GLOBAL_ROUNDED_CORNER_SETTINGS;
@@ -179,6 +182,8 @@ export const RoundedCornersEffect = GObject.registerClass(
                 borderedAreaRadius,
                 this.#actorSize
             );
+            
+            logTimeEnd('updateUniforms');
         }
 
         #setUniforms(
