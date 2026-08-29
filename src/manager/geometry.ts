@@ -37,7 +37,7 @@ export function computeShadowInsets(
         return [11, 35, 11, 11] as const;
     }
     if (wmClass.startsWith('jetbrains-')) {
-        return [18, 18, 18, 18] as const;
+        return [19, 18, 19, 18] as const;
     }
 
     return null;
