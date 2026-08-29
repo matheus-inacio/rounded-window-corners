@@ -250,6 +250,8 @@ function getAppType(
  */
 function _detectFromMapsSync(pid: number): AppType {
     try {
+        // procfs is a RAM-backed virtual filesystem. Sync I/O here is <1ms.
+        // Async GLib main-loop overhead takes ~38ms and delays window rendering.
         const [ok, contents] = GLib.file_get_contents(`/proc/${pid}/maps`);
         if (!ok || !contents) return 'Other';
 
