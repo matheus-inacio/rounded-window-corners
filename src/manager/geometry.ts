@@ -57,15 +57,16 @@ export function computeShadowInsets(
  *        or `null`/`undefined` if none apply.
  */
 export function computeBounds(
-    actor: Meta.WindowActor,
+    actorWidth: number,
+    actorHeight: number,
     [x, y, width, height]: [number, number, number, number],
     shadowInsets?: readonly number[] | null,
 ): Bounds {
     const bounds = {
         x1: x + 1,
         y1: y + 1,
-        x2: x + actor.width + width,
-        y2: y + actor.height + height,
+        x2: x + actorWidth + width,
+        y2: y + actorHeight + height,
     };
 
     if (shadowInsets) {

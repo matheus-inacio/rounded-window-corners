@@ -105,7 +105,7 @@ export const RoundedCornersEffect = GObject.registerClass(
             return true;
         }
 
-        updateUniforms(windowBounds: Bounds, showBorder: boolean, shadowSettings: BoxShadow[]) {
+        updateUniforms(windowBounds: Bounds, actorWidth: number, actorHeight: number, showBorder: boolean, shadowSettings: BoxShadow[]) {
             logTime('updateUniforms');
             
             const showBorderFlag = showBorder ? 1 : 0;
@@ -117,10 +117,19 @@ export const RoundedCornersEffect = GObject.registerClass(
             const x2 = windowBounds.x2 - padding.right;
             const y2 = windowBounds.y2 - padding.bottom;
 
-            const halfWidth = (x2 - x1) * 0.5;
-            const halfHeight = (y2 - y1) * 0.5;
-            const centerX = x1 + halfWidth;
-            const centerY = y1 + halfHeight;
+            let borderedAreaRadius = Math.max(outerRadius - BORDER_WIDTH, 0.0);
+
+            if (actorWidth <= 0 || actorHeight <= 0) return;
+
+            // Clamp bounds to stay within the actor's visible area.
+            // During rapid resizing, actor.width/frameRect/bufferRect can be
+            // momentarily out of sync, producing bounds that extend beyond the
+            // actor's texture.  Clamping prevents the shader from drawing
+            // border/shadow outside the window.
+            const halfWidth = Math.max((x2 - x1) * 0.5, 0);
+            const halfHeight = Math.max((y2 - y1) * 0.5, 0);
+            const centerX = Math.max(Math.min(x1 + halfWidth, actorWidth), 0);
+            const centerY = Math.max(Math.min(y1 + halfHeight, actorHeight), 0);
 
             this.#bounds[0] = centerX;
             this.#bounds[1] = centerY;
@@ -131,12 +140,6 @@ export const RoundedCornersEffect = GObject.registerClass(
             this.#borderedAreaBounds[1] = centerY;
             this.#borderedAreaBounds[2] = Math.max(halfWidth - BORDER_WIDTH, 0);
             this.#borderedAreaBounds[3] = Math.max(halfHeight - BORDER_WIDTH, 0);
-
-            let borderedAreaRadius = Math.max(outerRadius - BORDER_WIDTH, 0.0);
-            const actorWidth = this.actor.get_width();
-            const actorHeight = this.actor.get_height();
-
-            if (actorWidth <= 0 || actorHeight <= 0) return;
 
             this.#actorSize[0] = actorWidth;
             this.#actorSize[1] = actorHeight;

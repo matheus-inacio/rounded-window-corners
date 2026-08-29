@@ -91,10 +91,12 @@ export function isPermanentlyIneligible(
         return true;
     }
 
-    if (
-        win._appType !== undefined &&
-        _skipForLibToolkit(win._appType, isException)
-    ) {
+    if (win._appType === undefined) {
+        win._appType = getAppType(win);
+    }
+
+    if (_skipForLibToolkit(win._appType, isException)) {
+        logDebug(`[Performance] Instantly skipped ineligible ${win._appType} window during initialization (${wmClass})`);
         return true;
     }
 
@@ -124,16 +126,6 @@ export function shouldEnableEffect(
     if (isPermanentlyIneligible(win)) {
         logTimeEnd(`shouldEnableEffect`);
         return false;
-    }
-
-    if (win._appType === undefined) {
-        win._appType = getAppType(win);
-
-        // Now that the type is known, check if we should skip it.
-        if (_skipForLibToolkit(win._appType, BLACKLIST.has(win._cachedWmClass ?? ''))) {
-            logTimeEnd(`shouldEnableEffect`);
-            return false;
-        }
     }
 
     logDebug(() => `Check Type of window => ${win._appType}`);

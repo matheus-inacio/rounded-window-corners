@@ -49,11 +49,13 @@ export function onAddEffect(actor: RoundedWindowActor): void {
 
     // 1. Guard against 0x0 or invalid Wine/Proton windows
     const frameRect = win.get_frame_rect();
+    const actorWidth = actor.width;
+    const actorHeight = actor.height;
     if (
         frameRect.width <= 0 ||
         frameRect.height <= 0 ||
-        actor.width <= 0 ||
-        actor.height <= 0
+        actorWidth <= 0 ||
+        actorHeight <= 0
     ) {
         logDebug(`Skipping window: Invalid geometry (0x0)`);
         logTimeEnd(`onAddEffect`);
@@ -96,7 +98,7 @@ export function onAddEffect(actor: RoundedWindowActor): void {
 
     const effect = getRoundedCornersEffect(actor);
     if (effect) {
-        updateEffectUniforms(actor, win, effect, state, frameRect, windowState);
+        updateEffectUniforms(actorWidth, actorHeight, win, effect, state, frameRect, windowState);
     }
     
     logTimeEnd(`onAddEffect`);
@@ -183,11 +185,16 @@ function refreshRoundedCorners(
     logTime(`refreshRoundedCorners`);
 
     const frameRect = prefetchedFrameRect ?? win.get_frame_rect();
+    // Read actor dimensions once — these cross the JS→C bridge, so avoid
+    // re-reading them in computeBounds / updateUniforms.
+    const actorWidth = actor.width;
+    const actorHeight = actor.height;
+
     if (
         frameRect.width <= 0 ||
         frameRect.height <= 0 ||
-        actor.width <= 0 ||
-        actor.height <= 0
+        actorWidth <= 0 ||
+        actorHeight <= 0
     ) {
         logDebug(`Skipping window: Invalid geometry (0x0)`);
         logTimeEnd(`refreshRoundedCorners`);
@@ -222,13 +229,14 @@ function refreshRoundedCorners(
         return;
     }
 
-    updateEffectUniforms(actor, win, effect, state, frameRect, windowState);
+    updateEffectUniforms(actorWidth, actorHeight, win, effect, state, frameRect, windowState);
     
     logTimeEnd(`refreshRoundedCorners`);
 }
 
 function updateEffectUniforms(
-    actor: RoundedWindowActor,
+    actorWidth: number,
+    actorHeight: number,
     win: Meta.Window,
     effect: InstanceType<typeof RoundedCornersEffect>,
     state: { cachedShadowInsets?: any },
@@ -257,7 +265,9 @@ function updateEffectUniforms(
     }
 
     effect.updateUniforms(
-        computeBounds(actor, windowContentOffset, state.cachedShadowInsets),
+        computeBounds(actorWidth, actorHeight, windowContentOffset, state.cachedShadowInsets),
+        actorWidth,
+        actorHeight,
         showBorder,
         shadowSettings
     );

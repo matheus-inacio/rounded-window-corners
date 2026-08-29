@@ -10,6 +10,10 @@ build: clean
   npm install
   npx tsc --outDir {{buildDir}}
 
+  # Inject empty lines before JSDoc blocks OR before exports/functions
+  # (but ONLY if they aren't already preceded by a comment or a blank line, and ignore line 1)
+  awk -i inplace 'FNR > 1 && /^\/\*\*/ && prev !~ /^$/ { print "" } FNR > 1 && /^(export|function|const)/ && prev !~ /\*\/[[:space:]]*$/ && prev !~ /^$/ { print "" } { print; prev=$0 }' {{buildDir}}/**/*.js
+
   # Remove type-only JS files that compile to empty 'export {}' stubs (EGO-P-007)
   grep -rlx 'export {};' {{buildDir}} --include='*.js' | xargs -r rm -f
 
