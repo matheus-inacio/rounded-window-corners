@@ -53,8 +53,8 @@ For a full technical breakdown (removed subsystems, shader rewrite, performance 
 2. Build the extension
 
     ```bash
-    git clone https://github.com/matheus-inacio/rounded-window-corners
-    cd rounded-window-corners
+    git clone https://github.com/matheus-inacio/rounded-windows-lite
+    cd rounded-windows-lite
     just install
     ```
 

@@ -1,8 +1,8 @@
 {
-    "name": "gnome-shell-extension-rounded-corners-effect",
+    "name": "rounded-windows-lite",
     "version": "v1",
     "description": "A GNOME extension that adds rounded corners to all windows",
-    "author": "flexagoon <code@fxgn.dev>",
+    "author": "matheus-inacio",
     "license": "GPL-3.0-or-later",
     "main": "src/extension.ts",
     "devDependencies": {
