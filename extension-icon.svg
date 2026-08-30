@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="gradiente_janela" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5e5c64" />
+      <stop offset="100%" stop-color="#3d3846" />
+    </linearGradient>
+  </defs>
+  
+  <rect id="janela_principal" x="16" y="24" width="96" height="80" rx="28" fill="url(#gradiente_janela)" />
+  
+  <path id="divisor_cabecalho" d="M 16 56 L 112 56" stroke="#ffffff" stroke-width="4" opacity="0.15" />
+  
+  <circle id="botao_fechar" cx="36" cy="40" r="5" fill="#ffffff" opacity="0.3" />
+  <circle id="botao_minimizar" cx="52" cy="40" r="5" fill="#ffffff" opacity="0.3" />
+  
+  <path id="destaque_canto_esq" d="M 16 52 A 28 28 0 0 1 44 24" fill="none" stroke="#3584e4" stroke-width="8" stroke-linecap="round" />
+  <path id="destaque_canto_dir" d="M 112 76 A 28 28 0 0 1 84 104" fill="none" stroke="#3584e4" stroke-width="8" stroke-linecap="round" />
+</svg>
