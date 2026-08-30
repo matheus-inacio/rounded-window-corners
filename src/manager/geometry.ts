@@ -87,15 +87,14 @@ export function computeBounds(
  * (e.g. due to server-side decorations or client-side shadows). This function
  * returns the delta so callers can work in frame coordinates.
  *
- * @param window - The window to compute the offset for.
+ * @param frameRect - The frame rectangle of the window.
+ * @param bufferRect - The buffer rectangle of the window.
  * @returns `[x, y, width, height]` offsets from buffer to frame.
  */
 export function computeWindowContentsOffset(
-    window: Meta.Window,
-    prefetchedFrameRect?: Mtk.Rectangle,
+    frameRect: Mtk.Rectangle,
+    bufferRect: Mtk.Rectangle,
 ): [number, number, number, number] {
-    const bufferRect = window.get_buffer_rect();
-    const frameRect = prefetchedFrameRect ?? window.get_frame_rect();
     return [
         frameRect.x - bufferRect.x,
         frameRect.y - bufferRect.y,

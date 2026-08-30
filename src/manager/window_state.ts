@@ -18,6 +18,22 @@ export type WindowEffectState = {
     unminimizedTimeoutId: number;
     /** Cached Wayland shadow insets for this window (avoids re-computing wm_class each frame). */
     cachedShadowInsets?: readonly number[] | null;
+    /** Cached parameters from the last refresh to avoid redundant updates */
+    lastRefreshArgs?: {
+        actorWidth: number;
+        actorHeight: number;
+        frameRectX: number;
+        frameRectY: number;
+        frameRectWidth: number;
+        frameRectHeight: number;
+        bufferRectX: number;
+        bufferRectY: number;
+        bufferRectWidth: number;
+        bufferRectHeight: number;
+        maximized: boolean;
+        fullscreen: boolean;
+        appearsFocused: boolean;
+    };
 };
 
 /**
