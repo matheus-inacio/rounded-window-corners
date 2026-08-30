@@ -14,12 +14,11 @@
  */
 
 import type Clutter from 'gi://Clutter';
-import type Mtk from '@girs/mtk-18';
 import type Meta from 'gi://Meta';
+import type Mtk from '@girs/mtk-18';
 import type {RoundedWindowActor} from '../utils/types.js';
 
 import GLib from 'gi://GLib';
-import GObject from 'gi://GObject';
 
 import {RoundedCornersEffect} from '../effect/rounded_corners_effect.js';
 import {ROUNDED_CORNERS_EFFECT} from '../utils/constants.js';
@@ -31,7 +30,11 @@ import {
     computeShadowInsets,
     computeWindowContentsOffset,
 } from './geometry.js';
-import {managedActors, windowStateMap, type WindowEffectState} from './window_state.js';
+import {
+    managedActors,
+    type WindowEffectState,
+    windowStateMap,
+} from './window_state.js';
 // ---------------------------------------------------------------------------
 // Public event handlers
 // ---------------------------------------------------------------------------
@@ -42,10 +45,10 @@ export function onAddEffect(actor: RoundedWindowActor): void {
         logDebug('Skipping effect addition: actor has no metaWindow');
         return;
     }
-    
-    logTime(`onAddEffect`);
 
-    logDebug(`Adding effect to window`);
+    logTime('onAddEffect');
+
+    logDebug('Adding effect to window');
 
     // 1. Guard against 0x0 or invalid Wine/Proton windows
     const frameRect = win.get_frame_rect();
@@ -57,27 +60,27 @@ export function onAddEffect(actor: RoundedWindowActor): void {
         actorWidth <= 0 ||
         actorHeight <= 0
     ) {
-        logDebug(`Skipping window: Invalid geometry (0x0)`);
-        logTimeEnd(`onAddEffect`);
+        logDebug('Skipping window: Invalid geometry (0x0)');
+        logTimeEnd('onAddEffect');
         return;
     }
 
     const windowState = {
         maximized: win.maximizedHorizontally || win.maximizedVertically,
-        fullscreen: win.fullscreen
+        fullscreen: win.fullscreen,
     };
 
     // 2. Guard against windows that shouldn't have the effect
     if (!shouldEnableEffect(win, windowState)) {
-        logDebug(`Skipping window`);
-        logTimeEnd(`onAddEffect`);
+        logDebug('Skipping window');
+        logTimeEnd('onAddEffect');
         return;
     }
 
     // 3. Guard against duplicate effect applications or leaked shadows
     if (windowStateMap.has(actor) || getRoundedCornersEffect(actor)) {
-        logDebug(`Skipping window: Effect already applied`);
-        logTimeEnd(`onAddEffect`);
+        logDebug('Skipping window: Effect already applied');
+        logTimeEnd('onAddEffect');
         return;
     }
 
@@ -98,10 +101,20 @@ export function onAddEffect(actor: RoundedWindowActor): void {
 
     const effect = getRoundedCornersEffect(actor);
     if (effect) {
-        updateEffectUniforms(actorWidth, actorHeight, win, effect, state, frameRect, win.get_buffer_rect(), windowState, win.appears_focused);
+        updateEffectUniforms(
+            actorWidth,
+            actorHeight,
+            win,
+            effect,
+            state,
+            frameRect,
+            win.get_buffer_rect(),
+            windowState,
+            win.appears_focused,
+        );
     }
-    
-    logTimeEnd(`onAddEffect`);
+
+    logTimeEnd('onAddEffect');
 }
 
 export function onRemoveEffect(actor: RoundedWindowActor): void {
@@ -181,8 +194,10 @@ function refreshRoundedCorners(
 ): void {
     const win = actor.metaWindow;
     if (!win) return;
-    
-    let tStart = 0, tAfterProps = 0, tAfterEligibility = 0;
+
+    let tStart = 0,
+        tAfterProps = 0,
+        tAfterEligibility = 0;
     if (DEBUG_MODE) {
         tStart = GLib.get_monotonic_time();
     }
@@ -200,7 +215,7 @@ function refreshRoundedCorners(
         actorWidth <= 0 ||
         actorHeight <= 0
     ) {
-        logDebug(`Skipping window: Invalid geometry (0x0)`);
+        logDebug('Skipping window: Invalid geometry (0x0)');
         return;
     }
 
@@ -232,7 +247,9 @@ function refreshRoundedCorners(
             last.fullscreen === fullscreen &&
             last.appearsFocused === appearsFocused
         ) {
-            logDebug(`Skipping window: Redundant update (cached state matched)`);
+            logDebug(
+                'Skipping window: Redundant update (cached state matched)',
+            );
             return;
         }
     }
@@ -241,10 +258,10 @@ function refreshRoundedCorners(
         tAfterProps = GLib.get_monotonic_time();
     }
 
-    const windowState = { maximized, fullscreen };
+    const windowState = {maximized, fullscreen};
 
     const shouldHaveEffect = shouldEnableEffect(win, windowState);
-    
+
     if (DEBUG_MODE) {
         tAfterEligibility = GLib.get_monotonic_time();
     }
@@ -266,35 +283,50 @@ function refreshRoundedCorners(
         return;
     }
 
-    updateEffectUniforms(actorWidth, actorHeight, win, effect, state, frameRect, bufferRect, windowState, appearsFocused);
-    
+    updateEffectUniforms(
+        actorWidth,
+        actorHeight,
+        win,
+        effect,
+        state,
+        frameRect,
+        bufferRect,
+        windowState,
+        appearsFocused,
+    );
+
     if (DEBUG_MODE) {
         const tEnd = GLib.get_monotonic_time();
         const bridgeTime = (tAfterProps - tStart) / 1000;
         const eligTime = (tAfterEligibility - tAfterProps) / 1000;
         const uniformTime = (tEnd - tAfterEligibility) / 1000;
         const total = (tEnd - tStart) / 1000;
-        
-        console.log(`[Rounded Window Corners] [PERF] refreshRoundedCorners breakdown:\n  JS/C bridge reads: ${bridgeTime.toFixed(3)}ms\n  Eligibility check: ${eligTime.toFixed(3)}ms\n  Update uniforms:   ${uniformTime.toFixed(3)}ms\n  Total:             ${total.toFixed(3)}ms`);
+
+        console.log(
+            `[Rounded Window Corners] [PERF] refreshRoundedCorners breakdown:\n  JS/C bridge reads: ${bridgeTime.toFixed(3)}ms\n  Eligibility check: ${eligTime.toFixed(3)}ms\n  Update uniforms:   ${uniformTime.toFixed(3)}ms\n  Total:             ${total.toFixed(3)}ms`,
+        );
     }
 }
 
 function updateEffectUniforms(
     actorWidth: number,
     actorHeight: number,
-    win: Meta.Window,
+    _win: Meta.Window,
     effect: InstanceType<typeof RoundedCornersEffect>,
     state: WindowEffectState,
     frameRect: Mtk.Rectangle,
     bufferRect: Mtk.Rectangle,
-    windowState: {maximized: boolean, fullscreen: boolean},
-    appearsFocused: boolean
+    windowState: {maximized: boolean; fullscreen: boolean},
+    appearsFocused: boolean,
 ): void {
     if (!effect.enabled) {
         effect.enabled = true;
     }
 
-    const windowContentOffset = computeWindowContentsOffset(frameRect, bufferRect);
+    const windowContentOffset = computeWindowContentsOffset(
+        frameRect,
+        bufferRect,
+    );
     const maximized = windowState.maximized;
     const fullscreen = windowState.fullscreen;
     const showBorder = !(maximized || fullscreen);
@@ -304,18 +336,28 @@ function updateEffectUniforms(
     // If a Wayland window has no native padding (buffer == frame) and no CSD insets,
     // we cannot draw shadows because the shader cannot draw outside the buffer.
     // Instead of complex vertex expansion, we just disable the shadow by zeroing opacity.
-    if (showBorder && !state.cachedShadowInsets) {
-        if (bufferRect.width === frameRect.width) {
-            shadowSettings = shadowSettings.map(s => ({ ...s, opacity: 0 })) as typeof shadowSettings;
-        }
+    if (
+        showBorder &&
+        !state.cachedShadowInsets &&
+        bufferRect.width === frameRect.width
+    ) {
+        shadowSettings = shadowSettings.map(s => ({
+            ...s,
+            opacity: 0,
+        })) as typeof shadowSettings;
     }
 
     effect.updateUniforms(
-        computeBounds(actorWidth, actorHeight, windowContentOffset, state.cachedShadowInsets),
+        computeBounds(
+            actorWidth,
+            actorHeight,
+            windowContentOffset,
+            state.cachedShadowInsets,
+        ),
         actorWidth,
         actorHeight,
         showBorder,
-        shadowSettings
+        shadowSettings,
     );
 
     state.lastRefreshArgs = {

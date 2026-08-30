@@ -8,10 +8,7 @@
  * state.
  */
 
-import type Clutter from 'gi://Clutter';
-import type GObject from 'gi://GObject';
 import type Meta from 'gi://Meta';
-import type St from 'gi://St';
 import type {RoundedWindowActor} from '../utils/types.js';
 
 export type WindowEffectState = {

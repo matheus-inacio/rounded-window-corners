@@ -7,10 +7,10 @@
  * {@link event_manager.ts} focused on pure signal wiring.
  */
 
-import Meta from 'gi://Meta';
 import type {RoundedWindowActor} from '../utils/types.js';
 
 import GLib from 'gi://GLib';
+import Meta from 'gi://Meta';
 
 import {logDebug} from '../utils/log.js';
 import {isPermanentlyIneligible} from './eligibility.js';
@@ -157,9 +157,7 @@ export function applyEffectTo(actor: RoundedWindowActor): void {
     }
 
     if (isPermanentlyIneligible(metaWindow)) {
-        logDebug(
-            `Skipping window (Permanently Ineligible on Initialization)`,
-        );
+        logDebug('Skipping window (Permanently Ineligible on Initialization)');
         return;
     }
 
@@ -248,7 +246,7 @@ function handleResized(actor: RoundedWindowActor): void {
 
     if (actor.metaWindow && isPermanentlyIneligible(actor.metaWindow)) {
         logDebug(
-            `Optimization skip triggered: Detaching signals and removing effect from window`,
+            'Optimization skip triggered: Detaching signals and removing effect from window',
         );
         removeEffectFrom(actor);
         return;
@@ -266,7 +264,7 @@ function handleFocusChanged(actor: RoundedWindowActor): void {
 
     if (actor.metaWindow && isPermanentlyIneligible(actor.metaWindow)) {
         logDebug(
-            `Optimization skip triggered: Detaching signals and removing effect from window`,
+            'Optimization skip triggered: Detaching signals and removing effect from window',
         );
         removeEffectFrom(actor);
         return;

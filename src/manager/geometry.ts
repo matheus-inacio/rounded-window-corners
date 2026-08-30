@@ -11,8 +11,6 @@ import type {Bounds} from '../utils/types.js';
 
 import Meta from 'gi://Meta';
 
-
-
 /**
  * Compute the shadow insets for a Wayland window that embeds its own
  * client-side shadows (e.g. Kitty, JetBrains IDEs).

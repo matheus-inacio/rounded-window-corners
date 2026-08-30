@@ -1,4 +1,5 @@
 import GLib from 'gi://GLib';
+
 import {DEBUG_MODE} from './config.js';
 
 const _times = new Map<string, number>();
@@ -17,7 +18,9 @@ export function logTimeEnd(label: string | (() => string)) {
         if (start !== undefined) {
             const end = GLib.get_monotonic_time();
             const ms = (end - start) / 1000;
-            console.log(`[Rounded Window Corners] [PERF] ${str}: ${ms.toFixed(3)}ms`);
+            console.log(
+                `[Rounded Window Corners] [PERF] ${str}: ${ms.toFixed(3)}ms`,
+            );
             _times.delete(str);
         }
     }
@@ -29,7 +32,7 @@ export function logTimeEnd(label: string | (() => string)) {
  */
 export function logDebug(...args: unknown[]) {
     if (DEBUG_MODE) {
-        const resolved = args.map(a => typeof a === 'function' ? a() : a);
+        const resolved = args.map(a => (typeof a === 'function' ? a() : a));
         console.log(`[Rounded Window Corners] ${resolved.join(' ')}`);
     }
 }
@@ -38,6 +41,6 @@ export function logDebug(...args: unknown[]) {
  * Log an error with a [Rounded Window Corners] prefix.
  */
 export function logError(...args: unknown[]) {
-    const resolved = args.map(a => typeof a === 'function' ? a() : a);
+    const resolved = args.map(a => (typeof a === 'function' ? a() : a));
     console.error(`[Rounded Window Corners] ${resolved.join(' ')}`);
 }

@@ -68,7 +68,7 @@ export function isPermanentlyIneligible(
     }
     const wmClass = win._cachedWmClass;
     if (wmClass == null) {
-        logDebug(`Warning: wm_class_instance of window is null`);
+        logDebug('Warning: wm_class_instance of window is null');
         return true;
     }
 
@@ -96,7 +96,9 @@ export function isPermanentlyIneligible(
     }
 
     if (_skipForLibToolkit(win._appType, isException)) {
-        logDebug(`[Performance] Instantly skipped ineligible ${win._appType} window during initialization (${wmClass})`);
+        logDebug(
+            `[Performance] Instantly skipped ineligible ${win._appType} window during initialization (${wmClass})`,
+        );
         return true;
     }
 
@@ -119,19 +121,19 @@ export function shouldEnableEffect(
         _cachedWmClass?: string | null;
         _cachedWinType?: Meta.WindowType;
     },
-    windowState?: {maximized: boolean, fullscreen: boolean}
+    windowState?: {maximized: boolean; fullscreen: boolean},
 ): boolean {
-    logTime(`shouldEnableEffect`);
-    
+    logTime('shouldEnableEffect');
+
     if (isPermanentlyIneligible(win)) {
-        logTimeEnd(`shouldEnableEffect`);
+        logTimeEnd('shouldEnableEffect');
         return false;
     }
 
     logDebug(() => `Check Type of window => ${win._appType}`);
 
     const res = _roundedCornersAllowedForWindowState(win, windowState);
-    logTimeEnd(`shouldEnableEffect`);
+    logTimeEnd('shouldEnableEffect');
     return res;
 }
 
@@ -149,9 +151,11 @@ function _skipForLibToolkit(appType: AppType, isException: boolean): boolean {
 
 function _roundedCornersAllowedForWindowState(
     win: Meta.Window,
-    windowState?: {maximized: boolean, fullscreen: boolean}
+    windowState?: {maximized: boolean; fullscreen: boolean},
 ): boolean {
-    const maximized = windowState ? windowState.maximized : (win.maximizedHorizontally || win.maximizedVertically);
+    const maximized = windowState
+        ? windowState.maximized
+        : win.maximizedHorizontally || win.maximizedVertically;
     const fullscreen = windowState ? windowState.fullscreen : win.fullscreen;
     const cfg = GLOBAL_ROUNDED_CORNER_SETTINGS;
     return (
@@ -178,7 +182,7 @@ const KNOWN_LIBADWAITA_APPS = new Set([
     'org.gnome.Extensions',
     'org.gnome.TextEditor',
     'org.gnome.Console',
-    'com.mitchellh.ghostty'
+    'com.mitchellh.ghostty',
 ]);
 
 /**
@@ -201,9 +205,11 @@ function getAppType(
     }
     const wmClass = win._cachedWmClass;
     logTime(`getAppType [${wmClass || 'unknown'}]`);
-    
+
     if (wmClass && appTypeCache.has(wmClass)) {
-        logDebug(`AppType cache hit for "${wmClass}": ${appTypeCache.get(wmClass)}`);
+        logDebug(
+            `AppType cache hit for "${wmClass}": ${appTypeCache.get(wmClass)}`,
+        );
         logTimeEnd(`getAppType [${wmClass || 'unknown'}]`);
         return appTypeCache.get(wmClass)!;
     }
@@ -215,7 +221,7 @@ function getAppType(
         return 'LibAdwaita';
     }
 
-    if (wmClass && wmClass.toLowerCase().endsWith('.exe')) {
+    if (wmClass?.toLowerCase().endsWith('.exe')) {
         logDebug(`AppType fast-path for "${wmClass}": .exe → Other`);
         appTypeCache.set(wmClass, 'Other');
         logTimeEnd(`getAppType [${wmClass || 'unknown'}]`);
@@ -245,9 +251,11 @@ function _detectFromMapsSync(pid: number): AppType {
         // procfs is a RAM-backed virtual filesystem. Sync I/O here is <1ms.
         // Async GLib main-loop overhead takes ~38ms and delays window rendering.
         const [ok, contents] = GLib.file_get_contents(`/proc/${pid}/maps`);
-        if (!ok || !contents) return 'Other';
+        if (!(ok && contents)) return 'Other';
 
-        const text = new TextDecoder().decode(contents as unknown as Uint8Array);
+        const text = new TextDecoder().decode(
+            contents as unknown as Uint8Array,
+        );
         if (text.includes('libadwaita-1.so')) return 'LibAdwaita';
         if (text.includes('libhandy-1.so')) return 'LibHandy';
         return 'Other';

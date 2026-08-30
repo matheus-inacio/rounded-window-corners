@@ -22,15 +22,51 @@ export const GLOBAL_ROUNDED_CORNER_SETTINGS: RoundedCornerSettings = {
 };
 
 export const FOCUSED_SHADOW: [BoxShadow, BoxShadow, BoxShadow] = [
-    { horizontalOffset: 0, verticalOffset: 2, blurOffset: 8, spreadRadius: 2, opacity: 18 },
-    { horizontalOffset: 0, verticalOffset: 3, blurOffset: 10, spreadRadius: 1, opacity: 5 },
-    { horizontalOffset: 0, verticalOffset: 0, blurOffset: 0, spreadRadius: 1, opacity: 10 },
+    {
+        horizontalOffset: 0,
+        verticalOffset: 2,
+        blurOffset: 8,
+        spreadRadius: 2,
+        opacity: 18,
+    },
+    {
+        horizontalOffset: 0,
+        verticalOffset: 3,
+        blurOffset: 10,
+        spreadRadius: 1,
+        opacity: 5,
+    },
+    {
+        horizontalOffset: 0,
+        verticalOffset: 0,
+        blurOffset: 0,
+        spreadRadius: 1,
+        opacity: 10,
+    },
 ];
 
 export const UNFOCUSED_SHADOW: [BoxShadow, BoxShadow, BoxShadow] = [
-    { horizontalOffset: 0, verticalOffset: 2, blurOffset: 8, spreadRadius: 2, opacity: 9 },
-    { horizontalOffset: 0, verticalOffset: 3, blurOffset: 10, spreadRadius: 1, opacity: 0 },
-    { horizontalOffset: 0, verticalOffset: 0, blurOffset: 0, spreadRadius: 1, opacity: 5 },
+    {
+        horizontalOffset: 0,
+        verticalOffset: 2,
+        blurOffset: 8,
+        spreadRadius: 2,
+        opacity: 9,
+    },
+    {
+        horizontalOffset: 0,
+        verticalOffset: 3,
+        blurOffset: 10,
+        spreadRadius: 1,
+        opacity: 0,
+    },
+    {
+        horizontalOffset: 0,
+        verticalOffset: 0,
+        blurOffset: 0,
+        spreadRadius: 1,
+        opacity: 5,
+    },
 ];
 
 export const BLACKLIST: Set<string> = new Set();
