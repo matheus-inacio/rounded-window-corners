@@ -28,14 +28,10 @@ let globalSignals: GlobalSignalManager | null = null;
  * to matching handlers on each effect.
  */
 export async function enableEffect() {
-    // Import and load shaders asynchronously (EGO-X-004)
-    const {loadClipShadowShader} = await import(
-        '../effect/clip_shadow_effect.js'
-    );
     const {loadRoundedCornersShader} = await import(
         '../effect/rounded_corners_effect.js'
     );
-    await Promise.all([loadClipShadowShader(), loadRoundedCornersShader()]);
+    await Promise.all([loadRoundedCornersShader()]);
 
     globalSignals = new GlobalSignalManager();
     tracker.init();

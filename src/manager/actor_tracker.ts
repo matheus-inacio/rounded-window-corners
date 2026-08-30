@@ -7,10 +7,10 @@
  * {@link event_manager.ts} focused on pure signal wiring.
  */
 
-import type Meta from 'gi://Meta';
 import type {RoundedWindowActor} from '../utils/types.js';
 
 import GLib from 'gi://GLib';
+import Meta from 'gi://Meta';
 
 import {logDebug} from '../utils/log.js';
 import {isPermanentlyIneligible} from './eligibility.js';
@@ -22,8 +22,8 @@ import {ActorSignalManager} from './signal_manager.js';
 // ---------------------------------------------------------------------------
 
 let pendingEffectApplications: WeakMap<Meta.WindowActor, number>;
-let pendingResizeUpdates: WeakMap<RoundedWindowActor, number>;
 let pendingWmClassListeners: WeakMap<Meta.Window, number>;
+let pendingSettleCallbacks: WeakMap<RoundedWindowActor, number>;
 let initializedActors: WeakSet<RoundedWindowActor>;
 let destroyedActors: WeakSet<Meta.WindowActor>;
 
@@ -36,8 +36,8 @@ let actorSignals: ActorSignalManager | null = null;
 /** Initialize all tracking state. Call once from {@link enableEffect}. */
 export function init(): void {
     pendingEffectApplications = new WeakMap();
-    pendingResizeUpdates = new WeakMap();
     pendingWmClassListeners = new WeakMap();
+    pendingSettleCallbacks = new WeakMap();
     initializedActors = new WeakSet();
     destroyedActors = new WeakSet();
     actorSignals = new ActorSignalManager();
@@ -157,9 +157,7 @@ export function applyEffectTo(actor: RoundedWindowActor): void {
     }
 
     if (isPermanentlyIneligible(metaWindow)) {
-        logDebug(
-            `Skipping ${metaWindow.title} (Permanently Ineligible on Initialization)`,
-        );
+        logDebug('Skipping window (Permanently Ineligible on Initialization)');
         return;
     }
 
@@ -183,16 +181,16 @@ export function applyEffectTo(actor: RoundedWindowActor): void {
     // example, when using Dash to Dock, all opened windows will be invisible
     // *unless they are pinned in the dock*. So yeah, GNOME is magic.
     actorSignals!.connect(actor, actor, 'notify::size', () =>
-        throttledResizeHandler(actor),
+        handleResized(actor),
     );
     actorSignals!.connect(actor, texture, 'size-changed', () =>
-        throttledResizeHandler(actor),
+        handleResized(actor),
     );
 
     // Get notified about fullscreen explicitly, since a window must not change in
     // size to go fullscreen
     actorSignals!.connect(actor, metaWindow, 'notify::fullscreen', () =>
-        throttledResizeHandler(actor),
+        handleResized(actor),
     );
 
     // Focus / Workspace changes
@@ -217,52 +215,48 @@ export function applyEffectTo(actor: RoundedWindowActor): void {
 export function removeEffectFrom(actor: RoundedWindowActor): void {
     initializedActors.delete(actor);
 
-    // Intercept and destroy the background resize task so it doesn't
-    // accidentally resurrect the shadow after the window is closed.
-    const resizeIdleId = pendingResizeUpdates.get(actor);
-    if (resizeIdleId) {
-        GLib.source_remove(resizeIdleId);
-        pendingResizeUpdates.delete(actor);
-    }
+    cancelSettle(actor);
 
     actorSignals?.disconnectAll(actor);
     handlers.onRemoveEffect(actor);
 }
 
 // ---------------------------------------------------------------------------
-// Throttled event handlers
+// Synchronous event handlers
 // ---------------------------------------------------------------------------
 
 /**
- * Throttles rapid size updates (e.g., window dragging) to a single idle frame.
+ * Handles resize events with a dual synchronous + deferred strategy.
+ *
+ * 1. **Synchronous update** — process every resize signal immediately so the
+ *    shader stays as close to correct as possible during active resizing.
+ * 2. **Deferred "settle" update** — schedule a `BEFORE_REDRAW` callback that
+ *    re-reads all geometry one final time.  During rapid resizing,
+ *    `actor.width`/`actor.height` (Clutter layer) and
+ *    `win.get_frame_rect()`/`win.get_buffer_rect()` (Mutter layer) can be
+ *    momentarily out of sync.  The settle callback fires after the compositor
+ *    has reconciled everything, guaranteeing the shader ends up with the
+ *    correct final bounds.
+ *
+ * Each new resize cancels the previous pending settle callback, so only the
+ * last one in a burst actually executes.
  */
-function throttledResizeHandler(actor: RoundedWindowActor): void {
+function handleResized(actor: RoundedWindowActor): void {
     if (!isAlive(actor)) return;
 
     if (actor.metaWindow && isPermanentlyIneligible(actor.metaWindow)) {
         logDebug(
-            `Optimization skip triggered: Detaching signals and removing effect from ${actor.metaWindow.title}`,
+            'Optimization skip triggered: Detaching signals and removing effect from window',
         );
         removeEffectFrom(actor);
         return;
     }
 
-    if (pendingResizeUpdates.has(actor)) return;
+    // Synchronous: keep the shader close to correct during the resize.
+    handlers.onSizeChanged(actor);
 
-    const idleId = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-        pendingResizeUpdates.delete(actor);
-
-        // Prevent the callback from running if the actor was destroyed between
-        // the event firing and this idle frame executing.
-        if (!isAlive(actor)) {
-            return GLib.SOURCE_REMOVE;
-        }
-
-        handlers.onSizeChanged(actor);
-        return GLib.SOURCE_REMOVE;
-    });
-
-    pendingResizeUpdates.set(actor, idleId);
+    // Deferred: schedule a final re-sync once the compositor has settled.
+    scheduleSettle(actor);
 }
 
 function handleFocusChanged(actor: RoundedWindowActor): void {
@@ -270,7 +264,7 @@ function handleFocusChanged(actor: RoundedWindowActor): void {
 
     if (actor.metaWindow && isPermanentlyIneligible(actor.metaWindow)) {
         logDebug(
-            `Optimization skip triggered: Detaching signals and removing effect from ${actor.metaWindow.title}`,
+            'Optimization skip triggered: Detaching signals and removing effect from window',
         );
         removeEffectFrom(actor);
         return;
@@ -293,6 +287,8 @@ export function cleanupAllActors(): void {
             pendingEffectApplications.delete(actor as Meta.WindowActor);
         }
 
+        cancelSettle(actor as RoundedWindowActor);
+
         const win = (actor as Meta.WindowActor).metaWindow;
         if (win) {
             const notifyId = pendingWmClassListeners.get(win);
@@ -305,6 +301,40 @@ export function cleanupAllActors(): void {
         }
 
         removeEffectFrom(actor as RoundedWindowActor);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Settle callback helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Schedule a `BEFORE_REDRAW` callback that re-reads geometry for `actor`.
+ * Any previously pending settle for the same actor is cancelled first.
+ */
+function scheduleSettle(actor: RoundedWindowActor): void {
+    cancelSettle(actor);
+
+    const laters = global.compositor.get_laters();
+    const laterId = laters.add(Meta.LaterType.BEFORE_REDRAW, () => {
+        pendingSettleCallbacks.delete(actor);
+
+        if (!isAlive(actor)) return false;
+
+        handlers.onSizeChanged(actor);
+        return false; // GLib.SOURCE_REMOVE — run only once
+    });
+    pendingSettleCallbacks.set(actor, laterId);
+}
+
+/**
+ * Cancel any pending settle callback for `actor`, if one exists.
+ */
+function cancelSettle(actor: RoundedWindowActor): void {
+    const existingId = pendingSettleCallbacks.get(actor);
+    if (existingId) {
+        global.compositor.get_laters().remove(existingId);
+        pendingSettleCallbacks.delete(actor);
     }
 }
 

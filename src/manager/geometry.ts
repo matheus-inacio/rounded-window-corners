@@ -11,8 +11,6 @@ import type {Bounds} from '../utils/types.js';
 
 import Meta from 'gi://Meta';
 
-import {SHADOW_PADDING} from '../utils/constants.js';
-
 /**
  * Compute the shadow insets for a Wayland window that embeds its own
  * client-side shadows (e.g. Kitty, JetBrains IDEs).
@@ -37,7 +35,7 @@ export function computeShadowInsets(
         return [11, 35, 11, 11] as const;
     }
     if (wmClass.startsWith('jetbrains-')) {
-        return [18, 18, 18, 18] as const;
+        return [19, 18, 19, 18] as const;
     }
 
     return null;
@@ -57,15 +55,16 @@ export function computeShadowInsets(
  *        or `null`/`undefined` if none apply.
  */
 export function computeBounds(
-    actor: Meta.WindowActor,
+    actorWidth: number,
+    actorHeight: number,
     [x, y, width, height]: [number, number, number, number],
     shadowInsets?: readonly number[] | null,
 ): Bounds {
     const bounds = {
         x1: x + 1,
         y1: y + 1,
-        x2: x + actor.width + width,
-        y2: y + actor.height + height,
+        x2: x + actorWidth + width,
+        y2: y + actorHeight + height,
     };
 
     if (shadowInsets) {
@@ -86,42 +85,18 @@ export function computeBounds(
  * (e.g. due to server-side decorations or client-side shadows). This function
  * returns the delta so callers can work in frame coordinates.
  *
- * @param window - The window to compute the offset for.
+ * @param frameRect - The frame rectangle of the window.
+ * @param bufferRect - The buffer rectangle of the window.
  * @returns `[x, y, width, height]` offsets from buffer to frame.
  */
 export function computeWindowContentsOffset(
-    window: Meta.Window,
-    prefetchedFrameRect?: Mtk.Rectangle,
+    frameRect: Mtk.Rectangle,
+    bufferRect: Mtk.Rectangle,
 ): [number, number, number, number] {
-    const bufferRect = window.get_buffer_rect();
-    const frameRect = prefetchedFrameRect ?? window.get_frame_rect();
     return [
         frameRect.x - bufferRect.x,
         frameRect.y - bufferRect.y,
         frameRect.width - bufferRect.width,
         frameRect.height - bufferRect.height,
-    ];
-}
-
-/**
- * Compute the position and size offsets to apply to a shadow actor so it
- * correctly underlaps the window with the configured {@link SHADOW_PADDING}.
- *
- * @param [offsetX, offsetY, offsetWidth, offsetHeight] - Content offsets
- *        returned by {@link computeWindowContentsOffset}.
- * @returns `[x, y, width, height]` offsets to set on the shadow's
- *          `BindConstraint`s.
- */
-export function computeShadowActorOffset([
-    offsetX,
-    offsetY,
-    offsetWidth,
-    offsetHeight,
-]: [number, number, number, number]): number[] {
-    return [
-        offsetX - SHADOW_PADDING,
-        offsetY - SHADOW_PADDING,
-        2 * SHADOW_PADDING + offsetWidth,
-        2 * SHADOW_PADDING + offsetHeight,
     ];
 }

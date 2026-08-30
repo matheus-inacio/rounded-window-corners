@@ -14,26 +14,27 @@
  */
 
 import type Clutter from 'gi://Clutter';
-import type St from 'gi://St';
+import type Meta from 'gi://Meta';
 import type Mtk from '@girs/mtk-18';
 import type {RoundedWindowActor} from '../utils/types.js';
 
 import GLib from 'gi://GLib';
-import GObject from 'gi://GObject';
 
 import {RoundedCornersEffect} from '../effect/rounded_corners_effect.js';
 import {ROUNDED_CORNERS_EFFECT} from '../utils/constants.js';
-import {logDebug} from '../utils/log.js';
+import {logDebug, logTime, logTimeEnd} from '../utils/log.js';
 import {getRoundedCornersEffect, unwrapActor} from './actor_helpers.js';
 import {shouldEnableEffect} from './eligibility.js';
 import {
     computeBounds,
-    computeShadowActorOffset,
     computeShadowInsets,
     computeWindowContentsOffset,
 } from './geometry.js';
-import {createShadow, refreshShadow} from './shadow.js';
-import {managedActors, windowStateMap} from './window_state.js';
+import {
+    managedActors,
+    type WindowEffectState,
+    windowStateMap,
+} from './window_state.js';
 // ---------------------------------------------------------------------------
 // Public event handlers
 // ---------------------------------------------------------------------------
@@ -45,29 +46,41 @@ export function onAddEffect(actor: RoundedWindowActor): void {
         return;
     }
 
-    logDebug(`Adding effect to ${win.title}`);
+    logTime('onAddEffect');
+
+    logDebug('Adding effect to window');
 
     // 1. Guard against 0x0 or invalid Wine/Proton windows
     const frameRect = win.get_frame_rect();
+    const actorWidth = actor.width;
+    const actorHeight = actor.height;
     if (
         frameRect.width <= 0 ||
         frameRect.height <= 0 ||
-        actor.width <= 0 ||
-        actor.height <= 0
+        actorWidth <= 0 ||
+        actorHeight <= 0
     ) {
-        logDebug(`Skipping ${win.title}: Invalid geometry (0x0)`);
+        logDebug('Skipping window: Invalid geometry (0x0)');
+        logTimeEnd('onAddEffect');
         return;
     }
 
+    const windowState = {
+        maximized: win.maximizedHorizontally || win.maximizedVertically,
+        fullscreen: win.fullscreen,
+    };
+
     // 2. Guard against windows that shouldn't have the effect
-    if (!shouldEnableEffect(win)) {
-        logDebug(`Skipping ${win.title}`);
+    if (!shouldEnableEffect(win, windowState)) {
+        logDebug('Skipping window');
+        logTimeEnd('onAddEffect');
         return;
     }
 
     // 3. Guard against duplicate effect applications or leaked shadows
     if (windowStateMap.has(actor) || getRoundedCornersEffect(actor)) {
-        logDebug(`Skipping ${win.title}: Effect already applied`);
+        logDebug('Skipping window: Effect already applied');
+        logTimeEnd('onAddEffect');
         return;
     }
 
@@ -76,44 +89,32 @@ export function onAddEffect(actor: RoundedWindowActor): void {
         new RoundedCornersEffect(),
     );
 
-    const shadow = createShadow(actor);
-
-    // Bind transform properties of the window to the shadow actor so it
-    // follows animations (minimize, workspace switch, etc.).
-    const propertyBindings: GObject.Binding[] = [];
-    for (const prop of [
-        'pivot-point',
-        'translation-x',
-        'translation-y',
-        'scale-x',
-        'scale-y',
-        'visible',
-    ]) {
-        const binding = actor.bind_property(
-            prop,
-            shadow,
-            prop,
-            GObject.BindingFlags.SYNC_CREATE,
-        );
-        propertyBindings.push(binding);
-    }
-
     // Compute & cache Wayland shadow insets once per window instead of on every resize.
     const cachedShadowInsets = computeShadowInsets(win);
-
-    // Retrieve the provisional state (already contains shadowConstraints from createShadow)
-    // and overwrite it with the full state.
-    const provisionalState = windowStateMap.get(actor);
-    windowStateMap.set(actor, {
-        shadow,
+    const state = {
         unminimizedTimeoutId: 0,
-        propertyBindings,
-        shadowConstraints: provisionalState?.shadowConstraints,
         cachedShadowInsets,
-    });
+    };
+
+    windowStateMap.set(actor, state);
     managedActors.add(actor);
 
-    refreshRoundedCorners(actor, frameRect);
+    const effect = getRoundedCornersEffect(actor);
+    if (effect) {
+        updateEffectUniforms(
+            actorWidth,
+            actorHeight,
+            win,
+            effect,
+            state,
+            frameRect,
+            win.get_buffer_rect(),
+            windowState,
+            win.appears_focused,
+        );
+    }
+
+    logTimeEnd('onAddEffect');
 }
 
 export function onRemoveEffect(actor: RoundedWindowActor): void {
@@ -129,35 +130,6 @@ export function onRemoveEffect(actor: RoundedWindowActor): void {
         return;
     }
 
-    // Unbind all property bindings (including `visible`) immediately so the
-    // shadow stops following the window actor's animation state.
-    for (const binding of state.propertyBindings) {
-        binding.unbind();
-    }
-
-    const shadow = state.shadow;
-    if (shadow) {
-        // Remove constraints so the shadow is no longer driven by the actor.
-        shadow.get_constraints().forEach(constraint => {
-            shadow.remove_constraint(constraint);
-        });
-
-        // Hide immediately so it is not visible during the close animation.
-        shadow.visible = false;
-
-        // Defer the actual destruction to the next idle frame.  The window-close
-        // animation (≈300 ms) keeps a reference to the window actor and can
-        // trigger paint/timeline callbacks on still-connected children.  Destroying
-        // the shadow synchronously causes:
-        //   • "Timelines with detached actors" — St.Bin removed while animated
-        //   • "cogl_framebuffer_set_viewport: width > 0 && height > 0" — FBO
-        //     allocated for a zero-size actor during the closing shrink.
-        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-            destroyShadow(shadow);
-            return GLib.SOURCE_REMOVE;
-        });
-    }
-
     if (state.unminimizedTimeoutId) {
         GLib.source_remove(state.unminimizedTimeoutId);
     }
@@ -166,56 +138,30 @@ export function onRemoveEffect(actor: RoundedWindowActor): void {
     windowStateMap.delete(actor);
 }
 
-/**
- * Safely tear down a detached shadow actor.
- *
- * Called from an idle handler so any in-flight Clutter animations on the
- * closing window have already finished their current frame before we destroy
- * the `St.Bin` hierarchy.
- */
-function destroyShadow(shadow: St.Bin): void {
-    type DestroyCheck = {is_destroyed?: () => boolean};
-    if ((shadow as unknown as DestroyCheck).is_destroyed?.()) {
-        return;
-    }
-    try {
-        global.windowGroup.remove_child(shadow);
-    } catch (_) {
-        // Already removed (e.g. extension disabled mid-flight).
-    }
-    shadow.clear_effects();
-    shadow.destroy();
-}
-
 export function onMinimize(actor: RoundedWindowActor): void {
     // Compatibility with "Compiz alike magic lamp effect":
-    // Disable the shadow during the minimize animation so the lamp effect works.
+    // Disable the shader during the minimize animation so the lamp effect works.
     const magicLampEffect = actor.get_effect('minimize-magic-lamp-effect');
-    const state = windowStateMap.get(actor);
     const roundedCornersEffect = getRoundedCornersEffect(actor);
 
-    if (magicLampEffect && state?.shadow && roundedCornersEffect) {
-        state.shadow.visible = false;
+    if (magicLampEffect && roundedCornersEffect) {
         roundedCornersEffect.enabled = false;
     }
 }
 
 export function onUnminimize(actor: RoundedWindowActor): void {
     // Compatibility with "Compiz alike magic lamp effect":
-    // Wait until the unminimize animation is 98% done before re-showing the shadow.
+    // Wait until the unminimize animation is 98% done before re-showing the effect.
     const magicLampEffect = actor.get_effect('unminimize-magic-lamp-effect');
-    const state = windowStateMap.get(actor);
     const roundedCornersEffect = getRoundedCornersEffect(actor);
 
-    if (magicLampEffect && state?.shadow && roundedCornersEffect) {
-        state.shadow.visible = false;
+    if (magicLampEffect && roundedCornersEffect) {
         type Effect = Clutter.Effect & {timerId: Clutter.Timeline};
         const timer = (magicLampEffect as Effect).timerId;
 
         let disconnected = false;
         const id = timer.connect('new-frame', source => {
             if (source.get_progress() > 0.98 && !disconnected) {
-                state.shadow.visible = true;
                 roundedCornersEffect.enabled = true;
                 source.disconnect(id);
                 disconnected = true;
@@ -225,24 +171,17 @@ export function onUnminimize(actor: RoundedWindowActor): void {
 }
 
 export function onRestacked(): void {
-    for (const actor of managedActors) {
-        const state = windowStateMap.get(actor);
-
-        if (!(actor.visible && state?.shadow)) {
-            continue;
-        }
-
-        if (actor.get_previous_sibling() !== state.shadow) {
-            global.windowGroup.set_child_below_sibling(state.shadow, actor);
-        }
-    }
+    // No-op. Previously used to re-stack the St.Bin shadow.
 }
 
 /** Alias so event_manager.ts can use a descriptive name. */
 export const onSizeChanged = refreshRoundedCorners;
 
-/** Alias so event_manager.ts can use a descriptive name. */
-export {refreshShadow as onFocusChanged};
+import {DEBUG_MODE, FOCUSED_SHADOW, UNFOCUSED_SHADOW} from '../utils/config.js';
+
+export function onFocusChanged(actor: RoundedWindowActor): void {
+    refreshRoundedCorners(actor);
+}
 
 /**
  * Re-evaluate whether the effect should be active for `actor` and update the
@@ -256,25 +195,81 @@ function refreshRoundedCorners(
     const win = actor.metaWindow;
     if (!win) return;
 
+    let tStart = 0,
+        tAfterProps = 0,
+        tAfterEligibility = 0;
+    if (DEBUG_MODE) {
+        tStart = GLib.get_monotonic_time();
+    }
+
     const frameRect = prefetchedFrameRect ?? win.get_frame_rect();
+    const bufferRect = win.get_buffer_rect();
+    // Read actor dimensions once — these cross the JS→C bridge, so avoid
+    // re-reading them in computeBounds / updateUniforms.
+    const actorWidth = actor.width;
+    const actorHeight = actor.height;
+
     if (
         frameRect.width <= 0 ||
         frameRect.height <= 0 ||
-        actor.width <= 0 ||
-        actor.height <= 0
+        actorWidth <= 0 ||
+        actorHeight <= 0
     ) {
-        logDebug(`Skipping ${win.title}: Invalid geometry (0x0)`);
+        logDebug('Skipping window: Invalid geometry (0x0)');
         return;
     }
 
-    const shouldHaveEffect = shouldEnableEffect(win);
+    // Read these once here to minimize bridge transitions
+    const maximized = win.maximizedHorizontally || win.maximizedVertically;
+    const fullscreen = win.fullscreen;
+    const appearsFocused = win.appears_focused;
+
+    const state = windowStateMap.get(actor);
+    const effect = getRoundedCornersEffect(actor);
+
+    // Short-circuit: if the geometry and states haven't changed since the last refresh,
+    // we can completely skip re-evaluating eligibility and updating uniforms.
+    // This drops ~90% of the overhead during window opening/resizing animations.
+    if (state && effect && state.lastRefreshArgs) {
+        const last = state.lastRefreshArgs;
+        if (
+            last.actorWidth === actorWidth &&
+            last.actorHeight === actorHeight &&
+            last.frameRectX === frameRect.x &&
+            last.frameRectY === frameRect.y &&
+            last.frameRectWidth === frameRect.width &&
+            last.frameRectHeight === frameRect.height &&
+            last.bufferRectX === bufferRect.x &&
+            last.bufferRectY === bufferRect.y &&
+            last.bufferRectWidth === bufferRect.width &&
+            last.bufferRectHeight === bufferRect.height &&
+            last.maximized === maximized &&
+            last.fullscreen === fullscreen &&
+            last.appearsFocused === appearsFocused
+        ) {
+            logDebug(
+                'Skipping window: Redundant update (cached state matched)',
+            );
+            return;
+        }
+    }
+
+    if (DEBUG_MODE) {
+        tAfterProps = GLib.get_monotonic_time();
+    }
+
+    const windowState = {maximized, fullscreen};
+
+    const shouldHaveEffect = shouldEnableEffect(win, windowState);
+
+    if (DEBUG_MODE) {
+        tAfterEligibility = GLib.get_monotonic_time();
+    }
+
     if (!shouldHaveEffect) {
         onRemoveEffect(actor);
         return;
     }
-
-    const state = windowStateMap.get(actor);
-    const effect = getRoundedCornersEffect(actor);
 
     const hasEffect = effect && state;
 
@@ -288,33 +283,96 @@ function refreshRoundedCorners(
         return;
     }
 
+    updateEffectUniforms(
+        actorWidth,
+        actorHeight,
+        win,
+        effect,
+        state,
+        frameRect,
+        bufferRect,
+        windowState,
+        appearsFocused,
+    );
+
+    if (DEBUG_MODE) {
+        const tEnd = GLib.get_monotonic_time();
+        const bridgeTime = (tAfterProps - tStart) / 1000;
+        const eligTime = (tAfterEligibility - tAfterProps) / 1000;
+        const uniformTime = (tEnd - tAfterEligibility) / 1000;
+        const total = (tEnd - tStart) / 1000;
+
+        console.log(
+            `[Rounded Window Corners] [PERF] refreshRoundedCorners breakdown:\n  JS/C bridge reads: ${bridgeTime.toFixed(3)}ms\n  Eligibility check: ${eligTime.toFixed(3)}ms\n  Update uniforms:   ${uniformTime.toFixed(3)}ms\n  Total:             ${total.toFixed(3)}ms`,
+        );
+    }
+}
+
+function updateEffectUniforms(
+    actorWidth: number,
+    actorHeight: number,
+    _win: Meta.Window,
+    effect: InstanceType<typeof RoundedCornersEffect>,
+    state: WindowEffectState,
+    frameRect: Mtk.Rectangle,
+    bufferRect: Mtk.Rectangle,
+    windowState: {maximized: boolean; fullscreen: boolean},
+    appearsFocused: boolean,
+): void {
     if (!effect.enabled) {
         effect.enabled = true;
     }
 
-    const windowContentOffset = computeWindowContentsOffset(win, frameRect);
-    const showBorder = !(
-        win.maximizedHorizontally ||
-        win.maximizedVertically ||
-        win.fullscreen
+    const windowContentOffset = computeWindowContentsOffset(
+        frameRect,
+        bufferRect,
     );
+    const maximized = windowState.maximized;
+    const fullscreen = windowState.fullscreen;
+    const showBorder = !(maximized || fullscreen);
+
+    let shadowSettings = appearsFocused ? FOCUSED_SHADOW : UNFOCUSED_SHADOW;
+
+    // If a Wayland window has no native padding (buffer == frame) and no CSD insets,
+    // we cannot draw shadows because the shader cannot draw outside the buffer.
+    // Instead of complex vertex expansion, we just disable the shadow by zeroing opacity.
+    if (
+        showBorder &&
+        !state.cachedShadowInsets &&
+        bufferRect.width === frameRect.width
+    ) {
+        shadowSettings = shadowSettings.map(s => ({
+            ...s,
+            opacity: 0,
+        })) as typeof shadowSettings;
+    }
 
     effect.updateUniforms(
-        computeBounds(actor, windowContentOffset, state.cachedShadowInsets),
+        computeBounds(
+            actorWidth,
+            actorHeight,
+            windowContentOffset,
+            state.cachedShadowInsets,
+        ),
+        actorWidth,
+        actorHeight,
         showBorder,
+        shadowSettings,
     );
 
-    // Update BindConstraint offsets so the shadow tracks the new window geometry.
-    // Use cached constraint references for direct indexed access — avoids
-    // forEach() closure allocation + instanceof type-check per resize event.
-    const offsets = computeShadowActorOffset(windowContentOffset);
-    const constraints = state.shadowConstraints;
-    if (constraints) {
-        for (let i = 0; i < 4; i++) {
-            const nextOffset = offsets[i];
-            if (constraints[i].offset !== nextOffset) {
-                constraints[i].offset = nextOffset;
-            }
-        }
-    }
+    state.lastRefreshArgs = {
+        actorWidth,
+        actorHeight,
+        frameRectX: frameRect.x,
+        frameRectY: frameRect.y,
+        frameRectWidth: frameRect.width,
+        frameRectHeight: frameRect.height,
+        bufferRectX: bufferRect.x,
+        bufferRectY: bufferRect.y,
+        bufferRectWidth: bufferRect.width,
+        bufferRectHeight: bufferRect.height,
+        maximized,
+        fullscreen,
+        appearsFocused,
+    };
 }
