@@ -5,9 +5,10 @@
  * when the extension is disabled or an actor is removed.
  */
 
-import GObject from 'gi://GObject';
 import type Meta from 'gi://Meta';
 import type {RoundedWindowActor} from '../utils/types.js';
+
+import GObject from 'gi://GObject';
 
 export class GlobalSignalManager {
     private connections: {object: GObject.Object; id: number}[] = [];
@@ -57,7 +58,12 @@ export class ActorSignalManager {
             if (index !== -1) {
                 const conn = conns[index];
                 try {
-                    if (GObject.signal_handler_is_connected(conn.object, conn.id)) {
+                    if (
+                        GObject.signal_handler_is_connected(
+                            conn.object,
+                            conn.id,
+                        )
+                    ) {
                         conn.object.disconnect(conn.id);
                     }
                 } catch {
@@ -76,7 +82,12 @@ export class ActorSignalManager {
         if (conns) {
             for (const conn of conns) {
                 try {
-                    if (GObject.signal_handler_is_connected(conn.object, conn.id)) {
+                    if (
+                        GObject.signal_handler_is_connected(
+                            conn.object,
+                            conn.id,
+                        )
+                    ) {
                         conn.object.disconnect(conn.id);
                     }
                 } catch {
