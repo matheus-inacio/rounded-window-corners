@@ -50,7 +50,6 @@ export type BoxShadow = {
  */
 export type RoundedWindowActor = Meta.WindowActor & {
     rwcCustomData?: {
-        shadow: St.Bin;
         unminimizedTimeoutId: number;
         propertyBindings: GObject.Binding[];
     };

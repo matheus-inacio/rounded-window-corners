@@ -289,14 +289,19 @@ export function cleanupAllActors(): void {
 
         cancelSettle(actor as RoundedWindowActor);
 
-        const win = (actor as Meta.WindowActor).metaWindow;
-        if (win) {
-            const notifyId = pendingWmClassListeners.get(win);
-            if (notifyId) {
-                if (isAlive(win)) {
-                    win.disconnect(notifyId);
+        // Guard: the actor may have been disposed by Mutter's C code
+        // (e.g. X11 reparenting) without our 'destroy' handler firing,
+        // so accessing .metaWindow would trigger a "already disposed" warning.
+        if (isAlive(actor)) {
+            const win = (actor as Meta.WindowActor).metaWindow;
+            if (win) {
+                const notifyId = pendingWmClassListeners.get(win);
+                if (notifyId) {
+                    if (isAlive(win)) {
+                        win.disconnect(notifyId);
+                    }
+                    pendingWmClassListeners.delete(win);
                 }
-                pendingWmClassListeners.delete(win);
             }
         }
 
