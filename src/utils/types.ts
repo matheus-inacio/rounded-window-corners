@@ -1,8 +1,5 @@
 /** @file Provides types used throughout the codebase, mostly for storing settings. */
-
-import type GObject from 'gi://GObject';
 import type Meta from 'gi://Meta';
-import type St from 'gi://St';
 
 /** Bounds of rounded corners  */
 export type Bounds = {
@@ -46,11 +43,7 @@ export type BoxShadow = {
 /**
  * A window actor with rounded corners.
  *
- * This type is needed to store extra custom properties on a window actor.
+ * This type acts as an alias to `Meta.WindowActor` to explicitly denote
+ * an actor that is managed by the extension and can have effects applied.
  */
-export type RoundedWindowActor = Meta.WindowActor & {
-    rwcCustomData?: {
-        unminimizedTimeoutId: number;
-        propertyBindings: GObject.Binding[];
-    };
-};
+export type RoundedWindowActor = Meta.WindowActor;
